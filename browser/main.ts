@@ -1,41 +1,56 @@
-import {TILE_HEIGHT, TILE_WIDTH, Vector2, Vector3} from "./base.js";
-import SPRITES, { Sprite } from "./sprite.js";
+import {Vector2, Vector3} from "./base.js";
+import { Sprite, SPRITES, Object, ObjectDefaultConfig, TILES} from "./sprite.js";
 
-type Object = {
-	position: Vector3;
-	sprite: Sprite;
-	label: string;
-	xy_span: Vector2;
-	z_span: number;
-	can_stack: boolean;
+class Camera {
+	position: Vector2 = Vector2.zero();
+	scale: number;
+
+	constructor(x: number, y: number) {
+		this.position.x = x;
+		this.position.y = y;
+		this.scale = 1;
+	}
+
+	to_grid(): Vector2 {
+		return this.reverse_transform(this.position) 
+	}
+
+	transform(grid_pos: Vector3, offset?: Vector2): Vector2 {
+		if (offset) {
+			return grid_pos.toScreen().add(offset).scale(this.scale).add(this.position);
+		}
+		return grid_pos.toScreen().scale(this.scale).add(this.position);
+	}
+
+	reverse_transform(screen_pos: Vector2, offset?: Vector2): Vector2 {
+		if (offset) {
+			return screen_pos.sub(this.position).sub(offset).toGrid().scale(1/this.scale);
+		}
+		return screen_pos.sub(this.position).toGrid().scale(1/this.scale);
+	}
+
+	set_scale(n: number) {
+		this.scale = n;
+	}
 }
 
 let DEBUG = false;
 
+//TODO(pnf): big refactoring 
 //TODO(pnf): !remove hard coded translations, add camera
-//TODO(pnf): UI 
-//TODO(png): check if snapped position is valid for specific objects
-//TODO(png): subdivide grid 
-//TODO(png): snapping rules
+//TODO(pnf): UI
+//TODO(pnf): art: decent prototype player sprite 
+//TODO(pnf): check if snapped position is valid for specific objects
+//TODO(pnf): subdivide grid 
+//TODO(pnf): snapping rules
 //
-type SnappingRules = {
-	// snap translation, the target object will 'decide' where the snapped object should be,
-	// it will be a small translation, maybe half a tile MAX 
-	can_snap_top: (to_test: Object) => boolean;
-	can_snap_left: (to_test: Object) => boolean;
-	can_snap_right: (to_test: Object) => boolean;
-}
-
 type ConvexQuadrilateral = [Vector2, Vector2, Vector2, Vector2];
 type ConvexQuadrilateralGrid = [Vector3, Vector3, Vector3, Vector3];
 
 let ROOM_SHAPE: Array<Vector3> = [];
 
-const room_width = 10;
-const room_height = 10;
-
-function object_factory() {
-}
+const room_width = 20;
+const room_height = 20;
 
 function convex_quadrilateral_subdivide(quad: ConvexQuadrilateral, quad_span: Vector2, div_span: Vector2) {
 	const ratio = div_span.divide(quad_span);
@@ -90,16 +105,13 @@ function point_in_convex_quadrilateral(p: Vector2, r: ConvexQuadrilateral) {
 	return (c1 > 0 && c2 > 0 && c3 > 0 && c4 > 0)||(c1 < 0 && c2 < 0 && c3 < 0 && c4 < 0);
 }
 
-function can_place_object(selected: Object, hovered: Object, cursor_pos: Vector2) {
-}
-
-// TODO(pnf): get rid of vector3
+// TODO(pnf): get rid of vector3?
 type ObjectGetVisibleFacesRet = [
 	[ConvexQuadrilateral, ConvexQuadrilateral, ConvexQuadrilateral],
 	[ConvexQuadrilateralGrid, ConvexQuadrilateralGrid, ConvexQuadrilateralGrid, ConvexQuadrilateralGrid]]
 
 // return screen and grid coordinates of visible faces of 2d isometric object
-function object_get_visible_faces(ctx: CanvasRenderingContext2D, obj: Object): ObjectGetVisibleFacesRet {
+function object_get_visible_faces(obj: Object, camera: Camera): ObjectGetVisibleFacesRet {
 	const bottom_face = [
 		obj.position,
 		obj.position.add2(0, obj.xy_span.y, 0),
@@ -129,9 +141,9 @@ function object_get_visible_faces(ctx: CanvasRenderingContext2D, obj: Object): O
 	];
 
 	return [[
-		top_face.map(v => v.toScreen().add2(ctx.canvas.width*0.5, ctx.canvas.height*0.5)) as ConvexQuadrilateral,
-		left_face.map(v => v.toScreen().add2(ctx.canvas.width*0.5, ctx.canvas.height*0.5)) as ConvexQuadrilateral,
-		right_face.map(v => v.toScreen().add2(ctx.canvas.width*0.5, ctx.canvas.height*0.5)) as ConvexQuadrilateral],
+		top_face.map(v => camera.transform(v)) as ConvexQuadrilateral,
+		left_face.map(v => camera.transform(v)) as ConvexQuadrilateral,
+		right_face.map(v => camera.transform(v)) as ConvexQuadrilateral],
 		[bottom_face as ConvexQuadrilateralGrid, top_face as ConvexQuadrilateralGrid, left_face as ConvexQuadrilateralGrid, right_face as ConvexQuadrilateralGrid]
 	];
 }
@@ -158,11 +170,9 @@ function object_outline_faces(ctx: CanvasRenderingContext2D, quad: ConvexQuadril
 	}
 }
 
-const draw_sprite = (ctx: CanvasRenderingContext2D, sprite: Sprite, position: Vector3) => {
-	const start_draw = position.toScreen()
-		.add2(ctx.canvas.width*0.5, ctx.canvas.height*0.5)
-		.add(sprite.offset).scale(1);
-	const sprite_size = sprite.size.scale(1);
+const draw_sprite = (ctx: CanvasRenderingContext2D, sprites: HTMLImageElement, sprite: Sprite, position: Vector3, camera: Camera) => {
+	const start_draw = camera.transform(position, sprite.offset)
+	const sprite_size = sprite.size.scale(camera.scale);
 
 	ctx.drawImage(
 		sprites,
@@ -185,19 +195,25 @@ for (let x = 0; x < room_width; x++) {
 
 let ROOM: Array<Object> = [
 	{
-		position: new Vector3(0, 0, 0),
-		sprite: SPRITES.cleiton[0],
+		...ObjectDefaultConfig,
+		sprite: SPRITES.entities[0],
 		label: "player",
 		can_stack: false,
+		is_solid: true,
 		z_span: 2,
-		xy_span: new Vector2(1, 1)
+		xy_span: new Vector2(1, 1),
+		snapping: {
+			can_snap_top: (_) => false,
+			can_snap_left: (_) => false,
+			can_snap_right: (_) => false,
+		}
 	},
 ];
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
 let is_animating = false;
-const animate_movement = (ctx:CanvasRenderingContext2D, w: number, h: number, set_pos: (new_pos: Vector2, t: number) => void, dt: number, path: Vector2[], spd: number, step: number) => {
+const animate_movement = (ctx:CanvasRenderingContext2D, w: number, h: number, set_pos: (new_pos: [[number, number], Vector2], t: number) => void, dt: number, path: [[number, number], Vector2][], spd: number, step: number) => {
 	is_animating = true;
 	if (step >= path.length - 1) {
 		set_pos(path.pop()!, 1);
@@ -210,9 +226,9 @@ const animate_movement = (ctx:CanvasRenderingContext2D, w: number, h: number, se
 	let t = 0;
 	const animate = () => {
 		if (t < 1) {
-			const x = lerp(start.x, end.x, t);
-			const y = lerp(start.y, end.y, t);
-			set_pos(new Vector2(x, y), t)
+			const x = lerp(start[1].x, end[1].x, t);
+			const y = lerp(start[1].y, end[1].y, t);
+			set_pos([start[0], new Vector2(x, y)], t)
 			t += spd * dt;
 			requestAnimationFrame(animate);
 		}
@@ -224,7 +240,8 @@ const animate_movement = (ctx:CanvasRenderingContext2D, w: number, h: number, se
 }
 
 
-const shortest_path = (a: Vector2, b: Vector2): Vector2[] => {
+//refactor this
+const trace_path = (a: Vector2, b: Vector2): [[number, number], Vector2][] => {
 	const dirs: Array<[number, number]> = [[1, 0], [0, 1], [-1, 0], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]];
 
 	const visited: boolean[][] = Array.from({length: room_height}, () => Array(room_width).fill(false));
@@ -232,18 +249,19 @@ const shortest_path = (a: Vector2, b: Vector2): Vector2[] => {
 
 	const qeue: Array<{pos: Vector2, dist: number}> = [{pos: a, dist: 0}]
 
-	const shifted: Vector2[][] = Array.from({length: room_height}, () => Array(room_width).fill(false));
+	const shifted: [[number, number], Vector2][][] = Array.from({length: room_height}, () => Array(room_width).fill(false));
 	while (qeue.length > 0) {
 		const node = qeue.shift()!;
 
 		if (node.pos.x === b.x && node.pos.y === b.y) {
-			const path: Vector2[] = [];
-			let node: Vector2 | null = b;
+			const path: [[number, number], Vector2][] = [];
+			let node: [[number, number], Vector2] | null = [[0, 0], b];
 
 			while (node) {
 				path.unshift(node);
-				node = shifted[node.y][node.x];
+				node = shifted[node[1].y][node[1].x];
 			}
+
 			return path; 
 		}
 
@@ -251,7 +269,7 @@ const shortest_path = (a: Vector2, b: Vector2): Vector2[] => {
 			const next: Vector2 = new Vector2(node.pos.x + x, node.pos.y + y)
 			if (next.in_range(0, room_width-1, 0, room_height-1) && !visited[next.y][next.x]) {
 				visited[next.y][next.x] = true;
-				shifted[next.y][next.x] = node.pos;
+				shifted[next.y][next.x] = [[x, y], node.pos];
 				qeue.push({pos: next, dist: node.dist + 1});
 			}
 		}
@@ -259,11 +277,16 @@ const shortest_path = (a: Vector2, b: Vector2): Vector2[] => {
 	return [];
 }
 
-const SPRITE_PATH = "./assets/sprites.png";
-const sprites: HTMLImageElement = new Image();
-sprites.src = SPRITE_PATH;
+async function load_image(url: string): Promise<HTMLImageElement> {
+	const image = new Image();
+	image.src = url;
+	return new Promise((res, rej) => {
+		image.onload = () => res(image);
+		image.onerror = rej;
+	});
+}
 
-const draw_overlays = (ctx: CanvasRenderingContext2D, w: number, h: number, cursor_grid: Vector2, cursor_screen: Vector2) => {
+const draw_overlays = (ctx: CanvasRenderingContext2D, cursor_grid: Vector2, cursor_screen: Vector2) => {
 	ctx.beginPath();
 	ctx.fillStyle = "#000000";
 	ctx.font = "10px serif";
@@ -272,66 +295,84 @@ const draw_overlays = (ctx: CanvasRenderingContext2D, w: number, h: number, curs
 	ctx.stroke();
 }
 
-(() => {
+function draw_walls_and_floor(ctx: CanvasRenderingContext2D, sprites: HTMLImageElement, camera: Camera) {
+	for (let z = 0; z < room_height/2; z+= 1) {
+		for (let x = 0; x < room_width; x+= 1) {
+			const tile = TILES[13];
+			tile.position = new Vector3(x, -0.5, z);
+			//ROOM.unshift({...tile});
+			draw_sprite(ctx, sprites, tile.sprite, tile.position, camera);
+		}
+	}
+
+	for (let z = 0; z < room_width/2; z+= 1) {
+		for (let y = 0; y < room_height; y += 1) {
+			const tile = TILES[12];
+			tile.position = new Vector3(-0.5, y, z);
+			//ROOM.unshift({...tile});
+			draw_sprite(ctx, sprites, tile.sprite, tile.position, camera);
+		}
+	}
+
+	for (let y = 0; y < room_height; y+= 1) {
+		for (let x = 0; x < room_width; x+= 1) {
+			const tile = TILES[14];
+			tile.position = new Vector3(x, y, 0);
+			//ROOM.unshift({...tile});
+			draw_sprite(ctx, sprites, tile.sprite, tile.position, camera);
+		}
+	}
+
+}
+
+(async () => {
+	const sprites = await load_image("sprites.png");
+
 	const canvas = document.getElementById("canvas") as HTMLCanvasElement | null;
 	if (canvas == null) {
 		throw new Error("Could not find canvas element");
 	}
+
 	const ctx = canvas.getContext("2d");
 	if (ctx == null) {
 		throw new Error("Canvas 2D context not supported");
 	}
-	const t = ctx.canvas.parentElement!.getBoundingClientRect()
+	const dimensions = ctx.canvas.parentElement!.getBoundingClientRect()
+	canvas.width	= dimensions.width;
+	canvas.height = dimensions.height;
+	const camera = new Camera(canvas.width*0.5, canvas.height*0.5);
+	//draw_walls_and_floor(ctx, sprites, camera);
 
-	canvas.width	= t.width;
-	canvas.height = t.height;
 
-	let hovered_tile: Vector2 | null = null;
-	let hovered_sprite: Object | null = null;
 	let mdown = false;
-
-	let scale = 1;
-	const screen: Vector2 = new Vector2(0, 0);
-	const m_screen: Vector2 = new Vector2(0, 0);
-	const player_pos: Vector2 = new Vector2(0, 0);
-
-	//CAMERA
-	const camera = new Vector2(canvas.width, canvas.height).toGrid();
-	console.log(camera);
-
+	const cursor_screen_position: Vector2 = new Vector2(0, 0);
+	const player_pos: Vector3 = new Vector3(0, 0, 0);
+	let selected_obj: Object | null;
 	let is_selected_obj_snapped = false;
-
-	const selected_obj = {
-		position: new Vector3(0, 0, 0),
-		sprite: SPRITES.floor[4], 
-		label: "tile",
-		z_span: 1,
-		can_stack: true,
-		xy_span: new Vector2(1, 1)
-	};
+	let edit_mode = false;
+	let redraw = true;
 
 	canvas.addEventListener("pointermove", (evt: PointerEvent) => {
-		let _screen = new Vector2(evt.offsetX, evt.offsetY)
-			.sub(new Vector2(canvas.width*0.5, canvas.height*0.5))
-			.toGrid()
-		screen.x = _screen.x;
-		screen.y = _screen.y;
-		m_screen.x = evt.offsetX;
-		m_screen.y = evt.offsetY;
-		hovered_tile = null;
-		hovered_sprite = null;
+		cursor_screen_position.x = evt.offsetX;
+		cursor_screen_position.y = evt.offsetY;
 	})
 
-	let edit_mode = false;
 	canvas.addEventListener("pointerdown", (evt: PointerEvent) => {
 		if (evt.buttons === 1) {
 			mdown = true;
-		} else if (evt.buttons === 4) {
-			edit_mode = !edit_mode;
 		}
 	})
 
-	canvas.addEventListener("pointerup", (evt: PointerEvent) => {
+	canvas.addEventListener("wheel", (evt: WheelEvent) => {
+		if (evt.deltaY < 0) {
+			camera.scale = Math.min(camera.scale + 0.1, 4);
+		}
+		else {
+			camera.scale = Math.max(camera.scale - 0.1, 0.4);
+		}
+	})
+
+	canvas.addEventListener("pointerup", (_: PointerEvent) => {
 		mdown = false;
 	})
 
@@ -339,269 +380,263 @@ const draw_overlays = (ctx: CanvasRenderingContext2D, w: number, h: number, curs
 		if (evt.key === "D") {
 			DEBUG = !DEBUG;
 		}
+		else if (evt.key === "e") {
+			edit_mode = !edit_mode;
+		}
 	})
 
 	let prev_timestamp = 0;
 	const draw = (timestamp: number) => { 
-		ROOM.find(o => o.label === "player")!.position.x = player_pos.x;
-		ROOM.find(o => o.label === "player")!.position.y = player_pos.y;
+		ctx.fillStyle = "#f1f1f1"
+		ctx.fillRect(0, 0, canvas.width, canvas.height);
+		ROOM.find(o => o.label === "player")!.position = player_pos.copy();
+		//ROOM.find(o => o.label === "player")!.position.z = 1.3;
 
 		let dt = (timestamp-prev_timestamp)/1000;
 		prev_timestamp = timestamp;
 
-		ctx.fillStyle = "#ffbf83"
-		ctx.fillRect(0, 0, canvas.width, canvas.height);
+		let b = 0;
+		for (let i = 0; i < TILES.length; i++) {
+			const sprite = TILES[i].sprite;
 
-		//ROOM = ROOM.sort((a, b) => (a.position.x + a.position.y + Math.floor(a.position.z))-(b.position.x + b.position.y + Math.floor(b.position.z)));
-		ROOM = ROOM.sort((a, b) => (a.xy_span.x+a.position.x + a.xy_span.y+a.position.y + a.z_span+a.position.z)-(b.xy_span.x+b.position.x + b.xy_span.y+b.position.y + b.z_span+b.position.z));
-
-		for (let i = 0; i < ROOM_SHAPE.length; i++) {
-			let a = ROOM_SHAPE[i].toScreen();
-			let a_b = ROOM_SHAPE[i].add(new Vector3(1, 0, 0)).toScreen();
-			let a_c = ROOM_SHAPE[i].add(new Vector3(0, 1, 0)).toScreen();
-			let a_d = ROOM_SHAPE[i].add(new Vector3(1, 1, 0)).toScreen();
-
-			a.x += canvas.width*0.5;
-			a.y += canvas.height*0.5;
-			a_b.x += canvas.width*0.5;
-			a_b.y += canvas.height*0.5;
-			a_c.x += canvas.width*0.5;
-			a_c.y += canvas.height*0.5;
-			a_d.x += canvas.width*0.5;
-			a_d.y += canvas.height*0.5;
-
-			ctx.strokeStyle = "#dab079"
+			ctx.fillStyle = "#010101";
 			ctx.beginPath();
-			ctx.moveTo(...a.array());
-			ctx.lineTo(...a_b.array());
 
-			ctx.moveTo(...a_b.array());
-			ctx.lineTo(...a_d.array());
+			//console.log(b, i*32 *Math.ceil(TILES[i].xy_span.x));
+			ctx.fillRect(b, dimensions.height*0.5, Math.max(sprite.size.x, 32), Math.max(sprite.size.y, 32));
 
-			ctx.moveTo(...a_d.array());
-			ctx.lineTo(...a_c.array());
-
-			ctx.moveTo(...a_c.array());
-			ctx.lineTo(...a.array());
+			const draw_start = new Vector2(b, dimensions.height*0.5);
+			const draw_l = draw_start.add2(Math.max(sprite.size.x, 32), 0); 
+			const draw_p = draw_start.add2(0, Math.max(sprite.size.y, 32)); 
+			const draw_end = draw_start.add2(Math.max(sprite.size.x, 32), Math.max(sprite.size.y, 32)); 
+			if (point_in_convex_quadrilateral(cursor_screen_position, [draw_start, draw_p, draw_end, draw_l])) {
+				if (mdown) {
+					mdown = false;
+					selected_obj = TILES[i];
+					break;
+				}
+			}
+			//if (point_in_convex_quadrilateral()) {
+			//}
 			ctx.stroke();
+
+			ctx.drawImage(
+				sprites,
+				sprite.start.x,
+				sprite.start.y,
+				sprite.size.x,
+				sprite.size.y,
+				b,
+				dimensions.height*0.5,
+				sprite.size.x,
+				sprite.size.y,
+			);
+			b += 32*Math.ceil(TILES[i].xy_span.x)+1;
+		}
+
+		ROOM = ROOM.sort((a, b) => {
+			const a_depth = a.position.y + a.position.x + Math.round(a.position.z+0.5);
+			const b_depth = b.position.y + b.position.x + Math.round(b.position.z+0.5);
+		// Sort based on the depth
+			return a_depth - b_depth;			//const a_screen = camera.transform(a.position.add2(...a.xy_span.array(), a.z_span), a.sprite.offset);
+			//const b_screen = camera.transform(b.position.add2(...b.xy_span.array(), b.z_span), b.sprite.offset);
+			//
+			//return (b_screen.y+b_screen.x)-(a_screen.y+a_screen.x);
+		 //const f =(Math.ceil(a.xy_span.x) + Math.ceil(a.position.x) +
+		 //Math.ceil(a.xy_span.y) + Math.ceil(a.position.y) +
+		 //Math.ceil(a.z_span) + Math.ceil(a.position.z)) - 
+		 //(Math.ceil(b.xy_span.x) + Math.ceil(b.position.x) +
+		 // Math.ceil(b.xy_span.y) + Math.ceil(b.position.y) + Math.ceil(b.z_span) + Math.ceil(b.position.z))
+		});
+
+
+		draw_walls_and_floor(ctx, sprites, camera);
+		for (let i = 0; i < ROOM_SHAPE.length; i++) {
+			let a = camera.transform(ROOM_SHAPE[i].add(new Vector3(0, 0, 0.2)));
+			let a_b = camera.transform(ROOM_SHAPE[i].add(new Vector3(1, 0, 0.2)));
+			let a_c = camera.transform(ROOM_SHAPE[i].add(new Vector3(0, 1, 0.2)));
+			let a_d = camera.transform(ROOM_SHAPE[i].add(new Vector3(1, 1, 0.2)));
+
+			object_outline_faces(ctx, [[a, a_c, a_d, a_b] as ConvexQuadrilateral], "#dab079"); 
 		}
 
 
 		for (const obj of ROOM) { 
-			draw_sprite(ctx, obj.sprite, obj.position);
+			draw_sprite(ctx, sprites, obj.sprite, obj.position, camera);
 		}
+
+		//if (redraw) {
+		//	redraw = false;
+		//}
 
 		for (let idx = ROOM.length-1; idx >= 0; idx-=1) { 
 			const obj = ROOM[idx];
-			const [[top, left, right], [bottom_grid, top_grid, left_grid, right_grid]] = object_get_visible_faces(ctx, obj);
+
+			const [[top, left, right], [bottom_grid, top_grid, left_grid, right_grid]] = object_get_visible_faces(obj, camera);
+
 			if (DEBUG) {
 				object_outline_faces(ctx, [left, right, top], "#fafa00"); 
 			}
 
-			if (point_in_convex_quadrilateral(m_screen, left)) {
-				// maybe recurse subdivions if the selected object doesnt fit
-				const subdivisions = convex_quadrilateral_subdivide(
-					left_grid.map(v => v.xz()) as ConvexQuadrilateral,
-					new Vector2(obj.xy_span.x, obj.z_span),
-					new Vector2(selected_obj.xy_span.x, selected_obj.z_span),
-				);
-
-				if (subdivisions.length === 0) {
-					selected_obj.position = bottom_grid[0].add2(0, obj.xy_span.y, 0);
-					is_selected_obj_snapped = true;
-				} else {
-					const quad_grid = subdivisions.map(quad => quad.map(vertex => new Vector3(vertex.x, left_grid[0].y, vertex.y))) as ConvexQuadrilateralGrid[];
-					const quad_screen = quad_grid.map(c => c.map(v => v.toScreen().add2(canvas.width*0.5, canvas.height*0.5))) as ConvexQuadrilateral[]
-
-					for (let i = 0; i < quad_screen.length; i++) {
-						const squad = quad_screen[i];
-						const gquad = quad_grid[i];
-						object_outline_faces(ctx, [squad]); 
-						if (point_in_convex_quadrilateral(m_screen, squad)) {
-							selected_obj.position = bottom_grid[0].add(gquad[1].sub(bottom_grid[0])); 
-							is_selected_obj_snapped = true;
-							break;
-						}
+			if (selected_obj) {
+				if (point_in_convex_quadrilateral(cursor_screen_position, left)) {
+					if (!obj.snapping.can_snap_left(selected_obj)) {
+						break;
 					}
-				}
+					// maybe recurse subdivions if the selected object doesnt fit
+					const subdivisions = convex_quadrilateral_subdivide(
+						left_grid.map(v => v.xz()) as ConvexQuadrilateral,
+						new Vector2(obj.xy_span.x, obj.z_span),
+						new Vector2(selected_obj.xy_span.x, selected_obj.z_span),
+					);
 
-				const [a, b, c, d] = left;
-				ctx.strokeStyle = "#00FF00"
-				ctx.beginPath();
-				ctx.moveTo(...a.array());
-				ctx.lineTo(...b.array());
+					if (subdivisions.length === 0) {
+						selected_obj.position = bottom_grid[0].add2(0, obj.xy_span.y, 0);
+						is_selected_obj_snapped = true;
+					} else {
+						const quad_grid = subdivisions.map(quad => quad.map(vertex => new Vector3(vertex.x, left_grid[0].y, vertex.y))) as ConvexQuadrilateralGrid[];
+						const quad_screen = quad_grid.map(c => c.map(v => camera.transform(v))) as ConvexQuadrilateral[]
 
-				ctx.moveTo(...b.array());
-				ctx.lineTo(...c.array());
-
-				ctx.moveTo(...c.array());
-				ctx.lineTo(...d.array());
-
-				ctx.moveTo(...d.array());
-				ctx.lineTo(...a.array());
-				ctx.stroke();
-				break;
-			}
-			if (point_in_convex_quadrilateral(m_screen, right)) {
-				const subdivisions = convex_quadrilateral_subdivide(
-					right_grid.map(v => v.yz()) as ConvexQuadrilateral,
-					new Vector2(obj.xy_span.y, obj.z_span),
-					new Vector2(selected_obj.xy_span.y, selected_obj.z_span),
-				);
-
-				if (subdivisions.length === 0) {
-					selected_obj.position = bottom_grid[0].add2(obj.xy_span.x, 0, 0);
-					is_selected_obj_snapped = true;
-				} else {
-					//lol
-					//translate by -2 because it starts from top left and goes +
-					const quad_grid = subdivisions.map(quad => quad.map(vertex => new Vector3(right_grid[0].x, vertex.x-(obj.xy_span.y), vertex.y))) as ConvexQuadrilateralGrid[];
-					const quad_screen = quad_grid.map(c => c.map(v => v.toScreen().add2(canvas.width*0.5, canvas.height*0.5))) as ConvexQuadrilateral[]
-
-					for (let i = 0; i < quad_screen.length; i++) {
-						const squad = quad_screen[i];
-						const gquad = quad_grid[i];
-						object_outline_faces(ctx, [squad]); 
-						if (point_in_convex_quadrilateral(m_screen, squad)) {
-							selected_obj.position = bottom_grid[0].add(gquad[1].sub(bottom_grid[0])); 
-							is_selected_obj_snapped = true;
-							break;
-						}
-					}
-				}
-				const [a, b, c, d] = right;
-				ctx.strokeStyle = "#0000FF"
-				ctx.beginPath();
-				ctx.moveTo(...a.array());
-				ctx.lineTo(...b.array());
-
-				ctx.moveTo(...b.array());
-				ctx.lineTo(...c.array());
-
-				ctx.moveTo(...c.array());
-				ctx.lineTo(...d.array());
-
-				ctx.moveTo(...d.array());
-				ctx.lineTo(...a.array());
-				ctx.stroke();
-				break;
-			}
-			if (point_in_convex_quadrilateral(m_screen, top) && obj.can_stack) {
-				const subdivisions = convex_quadrilateral_subdivide(
-					right_grid.map(v => v.xy()) as ConvexQuadrilateral,
-					obj.xy_span,
-					selected_obj.xy_span,
-				);
-				if (subdivisions.length === 0) {
-					selected_obj.position = bottom_grid[0].add2(0, 0, obj.z_span);
-					is_selected_obj_snapped = true;
-				} else {
-					//lol
-					const quad_grid = subdivisions.map(quad => quad.map(vertex => new Vector3(vertex.x-(obj.xy_span.x), vertex.y, top_grid[0].z))) as ConvexQuadrilateralGrid[];
-					const quad_screen = quad_grid.map(c => c.map(v => v.toScreen().add2(canvas.width*0.5, canvas.height*0.5))) as ConvexQuadrilateral[]
-
-					for (let i = 0; i < quad_screen.length; i++) {
-						const squad = quad_screen[i];
-						const gquad = quad_grid[i];
-						object_outline_faces(ctx, [squad]); 
-						if (point_in_convex_quadrilateral(m_screen, squad)) {
+						for (let i = 0; i < quad_screen.length; i++) {
+							const squad = quad_screen[i];
+							const gquad = quad_grid[i];
 							object_outline_faces(ctx, [squad]); 
-							selected_obj.position = bottom_grid[0].add(gquad[1].sub(bottom_grid[0])); 
-							is_selected_obj_snapped = true;
-							break;
+
+							if (point_in_convex_quadrilateral(cursor_screen_position, squad)) {
+								selected_obj.position = bottom_grid[0].add(gquad[1].sub(bottom_grid[0])); 
+								is_selected_obj_snapped = true;
+								break;
+							}
 						}
 					}
+					break;
 				}
-				const [a, b, c, d] = top;
-				ctx.strokeStyle = "#FF0000"
-				ctx.beginPath();
-				ctx.moveTo(...a.array());
-				ctx.lineTo(...b.array());
+				if (point_in_convex_quadrilateral(cursor_screen_position, right)) {
+					if (!obj.snapping.can_snap_right(selected_obj)) {
+						break;
+					}
+					const subdivisions = convex_quadrilateral_subdivide(
+						right_grid.map(v => v.yz()) as ConvexQuadrilateral,
+						new Vector2(obj.xy_span.y, obj.z_span),
+						new Vector2(selected_obj.xy_span.y, selected_obj.z_span),
+					);
 
-				ctx.moveTo(...b.array());
-				ctx.lineTo(...c.array());
+					if (subdivisions.length === 0) {
+						selected_obj.position = bottom_grid[0].add2(obj.xy_span.x, 0, 0);
+						is_selected_obj_snapped = true;
+					} else {
+						//lol
+						//translate by -2 because it starts from top left and goes +
+						const quad_grid = subdivisions.map(quad => quad.map(vertex => new Vector3(right_grid[0].x, vertex.x-(obj.xy_span.y), vertex.y))) as ConvexQuadrilateralGrid[];
+						const quad_screen = quad_grid.map(c => c.map(v => camera.transform(v))) as ConvexQuadrilateral[]
 
-				ctx.moveTo(...c.array());
-				ctx.lineTo(...d.array());
+						for (let i = 0; i < quad_screen.length; i++) {
+							const squad = quad_screen[i];
+							const gquad = quad_grid[i];
+							object_outline_faces(ctx, [squad]); 
 
-				ctx.moveTo(...d.array());
-				ctx.lineTo(...a.array());
-				ctx.stroke();
-				break;
+							if (point_in_convex_quadrilateral(cursor_screen_position, squad)) {
+								selected_obj.position = bottom_grid[0].add(gquad[1].sub(bottom_grid[0])); 
+								is_selected_obj_snapped = true;
+								break;
+							}
+						}
+					}
+					break;
+				}
+				if (point_in_convex_quadrilateral(cursor_screen_position, top) && obj.can_stack) {
+					if (!obj.snapping.can_snap_top(selected_obj)) {
+						break;
+					}
+					const subdivisions = convex_quadrilateral_subdivide(
+						right_grid.map(v => v.xy()) as ConvexQuadrilateral,
+						obj.xy_span,
+						selected_obj.xy_span,
+					);
+					if (subdivisions.length === 0) {
+						selected_obj.position = bottom_grid[0].add2(0, 0, obj.z_span);
+						is_selected_obj_snapped = true;
+					} else {
+						const quad_grid = subdivisions.map(quad => quad.map(vertex => new Vector3(vertex.x-(obj.xy_span.x), vertex.y, top_grid[0].z))) as ConvexQuadrilateralGrid[];
+						const quad_screen = quad_grid.map(c => c.map(v => camera.transform(v))) as ConvexQuadrilateral[]
+
+						for (let i = 0; i < quad_screen.length; i++) {
+							const squad = quad_screen[i];
+							const gquad = quad_grid[i];
+
+							object_outline_faces(ctx, [squad]); 
+
+							if (point_in_convex_quadrilateral(cursor_screen_position, squad)) {
+								selected_obj.position = bottom_grid[0].add(gquad[1].sub(bottom_grid[0])); 
+								is_selected_obj_snapped = true;
+								break;
+							}
+						}
+					}
+					break;
+				}
+				is_selected_obj_snapped = false;
+				selected_obj.position = new Vector3(0, 0, 0);
 			}
-
-			is_selected_obj_snapped = false;
-			selected_obj.position = new Vector3(0, 0, 0);
 		}
 
 
 		if (!is_selected_obj_snapped) {
 			for (let i = 0; i < ROOM_SHAPE.length; i++) {
-				let a = ROOM_SHAPE[i].toScreen();
-				let a_b = ROOM_SHAPE[i].add(new Vector3(1, 0, 0)).toScreen();
-				let a_c = ROOM_SHAPE[i].add(new Vector3(0, 1, 0)).toScreen();
-				let a_d = ROOM_SHAPE[i].add(new Vector3(1, 1, 0)).toScreen();
+				let a = camera.transform(ROOM_SHAPE[i]);
+				let a_b = camera.transform(ROOM_SHAPE[i].add(new Vector3(1, 0, 0)));
+				let a_c = camera.transform(ROOM_SHAPE[i].add(new Vector3(0, 1, 0)));
+				let a_d = camera.transform(ROOM_SHAPE[i].add(new Vector3(1, 1, 0)));
 
-				a.x += canvas.width*0.5;
-				a.y += canvas.height*0.5;
-				a_b.x += canvas.width*0.5;
-				a_b.y += canvas.height*0.5;
-				a_c.x += canvas.width*0.5;
-				a_c.y += canvas.height*0.5;
-				a_d.x += canvas.width*0.5;
-				a_d.y += canvas.height*0.5;
-
-				if (screen.toFloor(0).eq(ROOM_SHAPE[i].xy())) {
-					ctx.strokeStyle = "#000000"
-					ctx.beginPath();
-					ctx.moveTo(...a.array());
-					ctx.lineTo(...a_b.array());
-
-					ctx.moveTo(...a_b.array());
-					ctx.lineTo(...a_d.array());
-
-					ctx.moveTo(...a_d.array());
-					ctx.lineTo(...a_c.array());
-
-					ctx.moveTo(...a_c.array());
-					ctx.lineTo(...a.array());
-					ctx.stroke();
-
-					selected_obj.position = ROOM_SHAPE[i].add2(0, 0, 0);
-					is_selected_obj_snapped = true;
+				if (camera.reverse_transform(cursor_screen_position).toFloor(0).eq(ROOM_SHAPE[i].xy())) {
+					object_outline_faces(ctx, [[a, a_c, a_d, a_b] as ConvexQuadrilateral], "#f1f1f1"); 
+					if (selected_obj) {
+						selected_obj.position = ROOM_SHAPE[i].add2(0, 0, 0);
+						is_selected_obj_snapped = true;
+					}
 					break;
 				}
 			}
 		}
 
-		draw_overlays(ctx, canvas.width, canvas.height, screen.toFloor(0), m_screen);
+		draw_overlays(ctx, camera.reverse_transform(cursor_screen_position).toFloor(0), cursor_screen_position);
+		//console.log(camera.to_grid());
 
-		if (edit_mode) {
-			const selected_faces = object_get_visible_faces(ctx, selected_obj);
+		if (edit_mode && selected_obj) {
+			const [faces, faces_grid] = object_get_visible_faces(selected_obj, camera);
 			if (is_selected_obj_snapped) {
-				object_outline_faces(ctx, selected_faces[1].map((f) => f.map(f => f.toScreen().add2(canvas.width*0.5, canvas.height*0.5))) as [ConvexQuadrilateral, ConvexQuadrilateral, ConvexQuadrilateral], "#360072");
-				object_outline_faces(ctx, selected_faces[1].map((f) => f.map(f => f.mul(new Vector3(1, 1, 0)).toScreen().add2(canvas.width*0.5, canvas.height*0.5))) as [ConvexQuadrilateral, ConvexQuadrilateral, ConvexQuadrilateral], "#f1f1f1");
+
+				object_outline_faces(ctx, faces, "#360072");
+				object_outline_faces(ctx, faces_grid.map((f) => f.map(v => camera.transform(v.mul(new Vector3(1, 1, 1))))) as [ConvexQuadrilateral, ConvexQuadrilateral, ConvexQuadrilateral], "#f1f1f1");
+
 				if (mdown) {
-					console.log("placing at", selected_obj.position);
+					console.log("placing at:", selected_obj.position)
+
 					mdown = false;
 					ROOM.push({
-						...selected_obj
+						...selected_obj,
+						position: new Vector3(selected_obj.position.x, selected_obj.position.y, selected_obj.position.z === 0 ? 0.2 : selected_obj.position.z)
 					});
 				}
 			}
 			else {
-				object_outline_faces(ctx, selected_faces[1].map((f) => f.map(f => f.toScreen().add(m_screen))) as [ConvexQuadrilateral, ConvexQuadrilateral, ConvexQuadrilateral]);
+				object_outline_faces(ctx, faces_grid.map((f) => f.map(v => v.toScreen().add(cursor_screen_position))) as [ConvexQuadrilateral, ConvexQuadrilateral, ConvexQuadrilateral]);
 			}
 		}
 		else {
 			if (mdown) {
 				mdown = false;
 				if (!is_animating) {
-					const path = shortest_path(player_pos, screen.toFloor(0));
+					const path = trace_path(player_pos.xy(), camera.reverse_transform(cursor_screen_position).toFloor(0));
+
 					if (path.length > 0) {
-						animate_movement(ctx, canvas.width, canvas.height, (np, t) => {
-							player_pos.x = np.x;
-							player_pos.y = np.y;
+						animate_movement(ctx, canvas.width, canvas.height, (np, _) => {
+							const [dir, pos] =  np;
+							player_pos.x = pos.x;
+							player_pos.y = pos.y;
+							let prev = camera.position;
+							//console.log();
+							//camera.position = camera.position.add(player_pos.mul(new Vector3(-0.5, -0.5, -0.5)).xy()); 
 						}, dt, path, 5, 0);
 					}
 				}

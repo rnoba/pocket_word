@@ -1,5 +1,5 @@
 export const TILE_WIDTH = 32;
-export const TILE_HEIGHT = 32;
+export const TILE_HEIGHT = 16;
 
 class Vector2 {
 	x: number;
@@ -9,15 +9,18 @@ class Vector2 {
 		this.y = y;
 	}
 	length(): number {
-		const l = this.x*this.y;
+		const l = this.x+this.y;
 		return Math.sqrt(l);
 	}
 	length2(): number {
-		const l = this.x*this.y;
+		const l = this.x+this.y;
 		return l;
 	}
 	divide(b: Vector2): Vector2 {
 		return new Vector2(this.x/b.x, this.y/b.y);
+	}
+	static zero() {
+		return new Vector2(0, 0);
 	}
 	normalize(): Vector2 {
 		const l = this.length();
@@ -31,9 +34,6 @@ class Vector2 {
 	}
 	cross(b: Vector2): number {
 		return this.x*b.y-this.y*b.x;
-	}
-	dot(b: Vector2): number {
-		return this.x*b.x+this.y*b.y;
 	}
 	add(b: Vector2): Vector2 {
 		return new Vector2(this.x+b.x, this.y+b.y);
@@ -55,8 +55,8 @@ class Vector2 {
 		return new Vector2(Math.floor(this.x+offset), Math.floor(this.y+offset));
 	}
 	toGrid(): Vector2 {
-		const x = (this.x / TILE_WIDTH + this.y / (TILE_HEIGHT / 2));
-		const y = (this.y / (TILE_HEIGHT / 2) - this.x / TILE_WIDTH)
+		const x = (this.x / TILE_WIDTH + this.y / (TILE_HEIGHT));
+		const y = (this.y / (TILE_HEIGHT) - this.x / TILE_WIDTH)
 		return new Vector2(x, y);
 	}
 	eq(b: Vector2) {
@@ -80,11 +80,14 @@ class Vector3 {
 		this.z = z;
 	}
 	length(): number {
-		const l = this.x*this.y*this.z;
+		const l = this.x+this.y+this.z;
 		return Math.sqrt(l);
 	}
 	eq(b: Vector3) {
 		return b.x === this.x && b.y === this.y && this.z === b.z;
+	}
+	toFloor(offset: number): Vector3 {
+		return new Vector3(Math.floor(this.x+offset), Math.floor(this.y+offset), Math.floor(this.z+offset));
 	}
 	divide(b: Vector3): Vector3 {
 		return new Vector3(this.x/b.x, this.y/b.y, this.z/b.z);
@@ -124,7 +127,7 @@ class Vector3 {
 		return new Vector3(this.x*scalar, this.y*scalar, this.z*scalar);
 	}
 	toScreen(): Vector2 {
-		return new Vector2((this.x-this.y)*(TILE_WIDTH/2), (this.x+this.y)*(TILE_HEIGHT/4)-(this.z*(TILE_HEIGHT/2)));
+		return new Vector2((this.x-this.y)*(TILE_WIDTH/2), (this.x+this.y)*(TILE_HEIGHT/2)-(this.z*(TILE_HEIGHT)));
 	}
 	array(): [number, number, number] {
 		return [this.x, this.y, this.z];
