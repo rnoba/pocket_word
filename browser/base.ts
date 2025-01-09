@@ -11,6 +11,12 @@ export class V2 {
 	static Zero() {
 		return new V2(0, 0);
 	}
+	static New(x: number, y: number) {
+		return new V2(x, y);
+	}
+	clone() {
+		return new V2(this.x, this.y);
+	}
 	set(b: V2): this {
 		this.x = b.x;
 		this.y = b.y;
@@ -46,21 +52,31 @@ export class V2 {
 		this.y = this.y+b.y;
 		return this;
 	}
-	add(a: number, b: number): this {
+	add2(a: number, b: number): this {
 		this.x = this.x+a;
 		this.y = this.y+b;
 		return this;
 	}
-	sub(a: number, b: number): this {
+	sub2(a: number, b: number): this {
 		this.x = this.x-a;
 		this.y = this.y-b;
+		return this;
+	}
+	add(b: V2): this {
+		this.x = this.x+b.x;
+		this.y = this.y+b.y;
+		return this;
+	}
+	sub(b: V2): this {
+		this.x = this.x-b.x;
+		this.y = this.y-b.y;
 		return this;
 	}
 	cross(b: V2): number {
 		return this.x*b.y-this.y*b.x;
 	}
 	dist(b: V2): number {
-		b.sub(this.x, this.y);
+		b.sub2(this.x, this.y);
 		return b.len();
 	}
 	scale(scalar: number): this {
@@ -90,6 +106,47 @@ export class V2 {
 	}
 }
 
+export type RGBA = {
+	r: number;
+	g: number;
+	b: number;
+	a: number;
+}
+
+export function RGBA(r: number, g: number, b: number, a: number = 1.0): RGBA
+{
+	const color: RGBA = {
+		r: ((r * 255) + 0.5) & 0xFF,
+		g: ((g * 255) + 0.5) & 0xFF,
+		b: ((b * 255) + 0.5) & 0xFF,
+		a: Math.max(Math.min(a, 1), 0),
+	}
+	return (color);
+}
+
+const HEX = "0123456789ABCDEF";
+
+function ntox(n: number): string
+{
+	let r: string = "";
+	do
+	{
+		r = HEX[n & 15] + r;
+		n >>>= 4;
+	} while (n > 0);
+	return (r.padStart(2, "0"));
+}
+
+export function RGBA_to_hex_string(color: RGBA): string
+{
+	return `#${ntox(color.r)}${ntox(color.g)}${ntox(color.b)}${ntox(color.a * 255)}`;
+}
+
+export function RGBA_to_css_string(color: RGBA): string
+{
+	return `rgba(${color.r}, ${color.g}, ${color.b}, ${color.a})`;
+}
+
 export interface Camera {
 	width: number;
 	height: number;
@@ -113,10 +170,10 @@ export function camera_transform_screen(
 	result.x = x;
 	result.y = y;
 	result.screen(z)
-		.add(offset_x, offset_y)
-		.sub(camera.x, camera.y)
+		.add2(offset_x, offset_y)
+		.sub2(camera.x, camera.y)
 		.scale(camera.scaling)
-		.add(
+		.add2(
 			camera.width	* 0.5,
 			camera.height * 0.5
 		);
@@ -135,8 +192,8 @@ export function camera_transform_world(
 	result.x = x - camera.width	  * 0.5;
 	result.y = y - camera.height	* 0.5;
 	result.scale(1/camera.scaling)
-		.add(camera.x, camera.y)
-		.sub(offset_x, offset_y)
+		.add2(camera.x, camera.y)
+		.sub2(offset_x, offset_y)
 		.world(z);
 	return result;
 }
@@ -147,4 +204,32 @@ export function mod(n: number, m: number) {
 
 export function clamp(min: number, max: number, value: number): number {
 	return Math.max(min, Math.min(max, value));
+}
+
+export type Rect = {
+	position: V2;
+	width: number;
+	height: number;
+}
+
+export function point_in_rect(point: V2, rect: Rect): Boolean {
+	const rect_end_x: number = rect.position.x + rect.width;
+	const rect_end_y: number = rect.position.y + rect.height;
+	if ((point.x < rect.position.x	||	
+			 point.y < rect.position.y) ||
+			(point.x > rect_end_x				|| 
+			 point.y > rect_end_y))
+	{
+		return (false);
+	}
+	return (true);
+}
+
+export function Rect_new(x: number, y: number, w: number, h: number): Rect
+{
+	return {
+		position: V2.New(x, y),
+		width: w,
+		height: h
+	}
 }

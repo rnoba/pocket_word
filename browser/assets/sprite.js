@@ -1,67 +1,8 @@
 import { camera_transform_screen, TW, V2 } from "./base.js";
 export const EmptySprite = {
     start: V2.Zero(),
-    size: V2.Zero(),
-    offset: V2.Zero()
-};
-const SPRITES = {
-    tiles: [
-        {
-            start: new V2(0, 0),
-            size: new V2(64, 64),
-            offset: new V2(0, 0)
-        },
-        {
-            start: new V2(64, 0),
-            size: new V2(64, 64),
-            offset: new V2(0, 0)
-        },
-        {
-            start: new V2(0, 64),
-            size: new V2(64, 64),
-            offset: new V2(0, 0)
-        },
-        {
-            start: new V2(64, 64),
-            size: new V2(64, 64),
-            offset: new V2(0, 0)
-        },
-        {
-            start: new V2(64, 128),
-            size: new V2(64, 64),
-            offset: new V2(0, 0)
-        },
-        {
-            start: new V2(128, 128),
-            size: new V2(64, 64),
-            offset: new V2(0, 0)
-        },
-        {
-            start: new V2(128, 64),
-            size: new V2(64, 64),
-            offset: new V2(0, 0)
-        },
-        {
-            start: new V2(64, 208),
-            size: new V2(64, 64),
-            offset: new V2(0, 0)
-        },
-        {
-            start: new V2(0, 128),
-            size: new V2(64, 64),
-            offset: new V2(0, 0)
-        },
-        {
-            start: new V2(0, 192),
-            size: new V2(64, 64),
-            offset: new V2(0, 0)
-        },
-        {
-            start: new V2(128, 0),
-            size: new V2(64, 64),
-            offset: new V2(0, 0)
-        },
-    ],
+    offset: V2.Zero(),
+    size: V2.Zero()
 };
 export function draw_from_image(ctx, src, sprite, camera, x, y, z) {
     const offset_x = sprite.offset.x - (TW / 2);
