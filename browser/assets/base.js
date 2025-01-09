@@ -1,129 +1,117 @@
-export const TILE_WIDTH = 32;
-export const TILE_HEIGHT = 16;
-class Vector2 {
+export const TW = 64;
+export const TH = 32;
+export class V2 {
+    x;
+    y;
     constructor(x, y) {
         this.x = x;
         this.y = y;
     }
-    length() {
-        const l = this.x + this.y;
+    static Zero() {
+        return new V2(0, 0);
+    }
+    set(b) {
+        this.x = b.x;
+        this.y = b.y;
+        return this;
+    }
+    copy() {
+        return new V2(this.x, this.y);
+    }
+    len() {
+        const l = this.x * this.x + this.y * this.y;
         return Math.sqrt(l);
     }
-    length2() {
-        const l = this.x + this.y;
-        return l;
+    len2() {
+        return this.x * this.x + this.y * this.y;
     }
-    divide(b) {
-        return new Vector2(this.x / b.x, this.y / b.y);
+    div(b) {
+        if (b.x !== 0 && b.y !== 0) {
+            this.x = this.x / b.x;
+            this.y = this.y / b.y;
+        }
+        return this;
     }
-    static zero() {
-        return new Vector2(0, 0);
+    norm() {
+        const l = this.len();
+        if (l !== 0) {
+            this.x = this.x / l;
+            this.y = this.y / l;
+        }
+        return this;
     }
-    normalize() {
-        const l = this.length();
-        return new Vector2(this.x / l, this.y / l);
+    translate(b) {
+        this.x = this.x + b.x;
+        this.y = this.y + b.y;
+        return this;
     }
-    sub(b) {
-        return new Vector2(this.x - b.x, this.y - b.y);
+    add(a, b) {
+        this.x = this.x + a;
+        this.y = this.y + b;
+        return this;
     }
-    sub2(a, b) {
-        return new Vector2(this.x - a, this.y - b);
+    sub(a, b) {
+        this.x = this.x - a;
+        this.y = this.y - b;
+        return this;
     }
     cross(b) {
         return this.x * b.y - this.y * b.x;
     }
-    add(b) {
-        return new Vector2(this.x + b.x, this.y + b.y);
-    }
-    in_range(x0, x1, y0, y1) {
-        return this.x >= x0 && this.x <= x1 && this.y >= y0 && this.y <= y1;
-    }
-    dist_to(b) {
-        const d = b.sub(this);
-        return d.length();
-    }
-    add2(a, b) {
-        return new Vector2(this.x + a, this.y + b);
+    dist(b) {
+        b.sub(this.x, this.y);
+        return b.len();
     }
     scale(scalar) {
-        return new Vector2(this.x * scalar, this.y * scalar);
+        this.x = this.x * scalar;
+        this.y = this.y * scalar;
+        return this;
     }
-    toFloor(offset) {
-        return new Vector2(Math.floor(this.x + offset), Math.floor(this.y + offset));
+    floor() {
+        this.x = Math.floor(this.x);
+        this.y = Math.floor(this.y);
+        return this;
     }
-    toGrid() {
-        const x = (this.x / TILE_WIDTH + this.y / (TILE_HEIGHT));
-        const y = (this.y / (TILE_HEIGHT) - this.x / TILE_WIDTH);
-        return new Vector2(x, y);
+    world(z = 0) {
+        const prev_x = this.x;
+        this.x = this.x / TW + this.y / TH;
+        this.y = this.y / TH - prev_x / TW + z * TH;
+        return this;
     }
-    eq(b) {
-        return b.x === this.x && b.y === this.y;
+    screen(z = 0) {
+        const prev_x = this.x;
+        this.x = (this.x - this.y) * (TW / 2);
+        this.y = (prev_x + this.y) * (TH / 2) - z * TH;
+        return this;
     }
     array() {
         return [this.x, this.y];
     }
-    mul(b) {
-        return new Vector2(this.x * b.x, this.y * b.y);
-    }
 }
-class Vector3 {
-    constructor(x, y, z) {
-        this.x = x;
-        this.y = y;
-        this.z = z;
-    }
-    length() {
-        const l = this.x + this.y + this.z;
-        return Math.sqrt(l);
-    }
-    eq(b) {
-        return b.x === this.x && b.y === this.y && this.z === b.z;
-    }
-    toFloor(offset) {
-        return new Vector3(Math.floor(this.x + offset), Math.floor(this.y + offset), Math.floor(this.z + offset));
-    }
-    divide(b) {
-        return new Vector3(this.x / b.x, this.y / b.y, this.z / b.z);
-    }
-    mul(b) {
-        return new Vector3(this.x * b.x, this.y * b.y, this.z * b.z);
-    }
-    yz() {
-        return new Vector2(this.y, this.z);
-    }
-    xz() {
-        return new Vector2(this.x, this.z);
-    }
-    xy() {
-        return new Vector2(this.x, this.y);
-    }
-    copy() {
-        return new Vector3(this.x, this.y, this.z);
-    }
-    normalize() {
-        const l = this.length();
-        return new Vector3(this.x / l, this.y / l, this.z / l);
-    }
-    sub(b) {
-        return new Vector3(this.x - b.x, this.y - b.y, this.z - b.z);
-    }
-    toV2() {
-        return new Vector2(this.x, this.y);
-    }
-    add(b) {
-        return new Vector3(this.x + b.x, this.y + b.y, this.z + b.z);
-    }
-    add2(a, b, c) {
-        return new Vector3(this.x + a, this.y + b, this.z + c);
-    }
-    scale(scalar) {
-        return new Vector3(this.x * scalar, this.y * scalar, this.z * scalar);
-    }
-    toScreen() {
-        return new Vector2((this.x - this.y) * (TILE_WIDTH / 2), (this.x + this.y) * (TILE_HEIGHT / 2) - (this.z * (TILE_HEIGHT)));
-    }
-    array() {
-        return [this.x, this.y, this.z];
-    }
+export function camera_transform_screen(camera, x, y, z, offset_x = 0, offset_y = 0) {
+    const result = V2.Zero();
+    result.x = x;
+    result.y = y;
+    result.screen(z)
+        .add(offset_x, offset_y)
+        .sub(camera.x, camera.y)
+        .scale(camera.scaling)
+        .add(camera.width * 0.5, camera.height * 0.5);
+    return result;
 }
-export { Vector2, Vector3 };
+export function camera_transform_world(camera, x, y, z, offset_x = 0, offset_y = 0) {
+    const result = V2.Zero();
+    result.x = x - camera.width * 0.5;
+    result.y = y - camera.height * 0.5;
+    result.scale(1 / camera.scaling)
+        .add(camera.x, camera.y)
+        .sub(offset_x, offset_y)
+        .world(z);
+    return result;
+}
+export function mod(n, m) {
+    return (n % m + m) % m;
+}
+export function clamp(min, max, value) {
+    return Math.max(min, Math.min(max, value));
+}

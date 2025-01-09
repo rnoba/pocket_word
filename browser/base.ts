@@ -1,140 +1,150 @@
-export const TILE_WIDTH = 32;
-export const TILE_HEIGHT = 16;
+export const TW	= 64;
+export const TH	= 32;
 
-class Vector2 {
+export class V2 {
 	x: number;
 	y: number;
 	constructor(x: number, y: number) {
 		this.x = x;
 		this.y = y;
 	}
-	length(): number {
-		const l = this.x+this.y;
+	static Zero() {
+		return new V2(0, 0);
+	}
+	set(b: V2): this {
+		this.x = b.x;
+		this.y = b.y;
+		return this;
+	}
+	copy(): V2 {
+		return new V2(this.x, this.y);
+	}
+	len(): number {
+		const l = this.x*this.x+this.y*this.y;
 		return Math.sqrt(l);
 	}
-	length2(): number {
-		const l = this.x+this.y;
-		return l;
+	len2(): number {
+		return this.x*this.x+this.y*this.y;
 	}
-	divide(b: Vector2): Vector2 {
-		return new Vector2(this.x/b.x, this.y/b.y);
+	div(b: V2): this {
+		if (b.x !== 0 && b.y !== 0) { 
+			this.x = this.x/b.x;
+			this.y = this.y/b.y;
+		}
+		return this;
 	}
-	static zero() {
-		return new Vector2(0, 0);
+	norm(): this {
+		const l = this.len();
+		if (l !== 0) {
+			this.x = this.x/l;
+			this.y = this.y/l;
+		}
+		return this;
 	}
-	normalize(): Vector2 {
-		const l = this.length();
-		return new Vector2(this.x/l, this.y/l);
+	translate(b: V2):  this {
+		this.x = this.x+b.x;
+		this.y = this.y+b.y;
+		return this;
 	}
-	sub(b: Vector2): Vector2 {
-		return new Vector2(this.x-b.x, this.y-b.y);
+	add(a: number, b: number): this {
+		this.x = this.x+a;
+		this.y = this.y+b;
+		return this;
 	}
-	sub2(a: number, b: number): Vector2 {
-		return new Vector2(this.x-a, this.y-b);
+	sub(a: number, b: number): this {
+		this.x = this.x-a;
+		this.y = this.y-b;
+		return this;
 	}
-	cross(b: Vector2): number {
+	cross(b: V2): number {
 		return this.x*b.y-this.y*b.x;
 	}
-	add(b: Vector2): Vector2 {
-		return new Vector2(this.x+b.x, this.y+b.y);
+	dist(b: V2): number {
+		b.sub(this.x, this.y);
+		return b.len();
 	}
-	in_range(x0: number, x1: number, y0: number, y1: number): Boolean {
-		return this.x >= x0 && this.x <= x1 && this.y >= y0 && this.y <= y1;
+	scale(scalar: number): this {
+		this.x = this.x*scalar;
+		this.y = this.y*scalar;
+		return this;
 	}
-	dist_to(b: Vector2): number {
-		const d = b.sub(this);
-		return d.length();
+	floor(): this {
+		this.x = Math.floor(this.x);
+		this.y = Math.floor(this.y);
+		return this;
 	}
-	add2(a: number, b: number): Vector2 {
-		return new Vector2(this.x+a, this.y+b);
+	world(z: number = 0): this {
+		const prev_x = this.x;
+		this.x = this.x / TW + this.y / TH;
+		this.y = this.y / TH - prev_x / TW + z * TH;
+		return this;
 	}
-	scale(scalar: number): Vector2 {
-		return new Vector2(this.x*scalar, this.y*scalar);
-	}
-	toFloor(offset: number): Vector2 {
-		return new Vector2(Math.floor(this.x+offset), Math.floor(this.y+offset));
-	}
-	toGrid(): Vector2 {
-		const x = (this.x / TILE_WIDTH + this.y / (TILE_HEIGHT));
-		const y = (this.y / (TILE_HEIGHT) - this.x / TILE_WIDTH)
-		return new Vector2(x, y);
-	}
-	eq(b: Vector2) {
-		return b.x === this.x && b.y === this.y;
+	screen(z: number = 0): this {
+		const prev_x = this.x;
+		this.x = (this.x - this.y) * (TW / 2);
+		this.y = (prev_x + this.y) * (TH / 2) - z * TH;
+		return this;
 	}
 	array(): [number, number] {
 		return [this.x, this.y];
 	}
-	mul(b: Vector2): Vector2 {
-		return new Vector2(this.x*b.x, this.y*b.y);
-	}
 }
 
-class Vector3 {
+export interface Camera {
+	width: number;
+	height: number;
 	x: number;
 	y: number;
 	z: number;
-	constructor(x: number, y: number, z: number) {
-		this.x = x;
-		this.y = y;
-		this.z = z;
-	}
-	length(): number {
-		const l = this.x+this.y+this.z;
-		return Math.sqrt(l);
-	}
-	eq(b: Vector3) {
-		return b.x === this.x && b.y === this.y && this.z === b.z;
-	}
-	toFloor(offset: number): Vector3 {
-		return new Vector3(Math.floor(this.x+offset), Math.floor(this.y+offset), Math.floor(this.z+offset));
-	}
-	divide(b: Vector3): Vector3 {
-		return new Vector3(this.x/b.x, this.y/b.y, this.z/b.z);
-	}
-	mul(b: Vector3): Vector3 {
-		return new Vector3(this.x*b.x, this.y*b.y, this.z*b.z);
-	}
-	yz(): Vector2 {
-		return new Vector2(this.y, this.z);
-	}
-	xz(): Vector2 {
-		return new Vector2(this.x, this.z);
-	}
-	xy(): Vector2 {
-		return new Vector2(this.x, this.y);
-	}
-	copy(): Vector3 {
-		return new Vector3(this.x, this.y, this.z);
-	}
-	normalize(): Vector3 {
-		const l = this.length();
-		return new Vector3(this.x/l, this.y/l, this.z/l);
-	}
-	sub(b: Vector3): Vector3 {
-		return new Vector3(this.x-b.x, this.y-b.y, this.z-b.z);
-	}
-	toV2(): Vector2 {
-		return new Vector2(this.x, this.y);
-	}
-	add(b: Vector3): Vector3 {
-		return new Vector3(this.x+b.x, this.y+b.y, this.z+b.z);
-	}
-	add2(a: number, b: number, c: number): Vector3 {
-		return new Vector3(this.x+a, this.y+b, this.z+c);
-	}
-	scale(scalar: number): Vector3 {
-		return new Vector3(this.x*scalar, this.y*scalar, this.z*scalar);
-	}
-	toScreen(): Vector2 {
-		return new Vector2((this.x-this.y)*(TILE_WIDTH/2), (this.x+this.y)*(TILE_HEIGHT/2)-(this.z*(TILE_HEIGHT)));
-	}
-	array(): [number, number, number] {
-		return [this.x, this.y, this.z];
-	}
+	word_position: V2;
+	scaling: number;
+	is_locked: boolean;
 }
 
-export {
-	Vector2,
-	Vector3
+export function camera_transform_screen(
+	camera: Camera,
+	x: number,
+	y: number,
+	z: number,
+	offset_x: number = 0,
+	offset_y: number = 0
+): V2 {
+	const result: V2 =  V2.Zero();
+	result.x = x;
+	result.y = y;
+	result.screen(z)
+		.add(offset_x, offset_y)
+		.sub(camera.x, camera.y)
+		.scale(camera.scaling)
+		.add(
+			camera.width	* 0.5,
+			camera.height * 0.5
+		);
+	return result;
+}
+
+export function camera_transform_world(
+	camera: Camera,
+	x: number,
+	y: number,
+	z: number,
+	offset_x: number = 0,
+	offset_y: number = 0
+): V2 {
+	const result: V2 =  V2.Zero();
+	result.x = x - camera.width	  * 0.5;
+	result.y = y - camera.height	* 0.5;
+	result.scale(1/camera.scaling)
+		.add(camera.x, camera.y)
+		.sub(offset_x, offset_y)
+		.world(z);
+	return result;
+}
+
+export function mod(n: number, m: number) {
+	return (n % m + m) % m;
+}
+
+export function clamp(min: number, max: number, value: number): number {
+	return Math.max(min, Math.min(max, value));
 }
