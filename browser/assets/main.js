@@ -29,37 +29,18 @@ import * as Input from "./input.js";
     //const s = Base.camera_transform_world(camera, w.x, w.y, 0);
     //console.log(w.array(), s.array())
     const ipt = Input.init();
-    const ui = new Ui.UI(ctx);
-    let dragging = false;
-    let drag_start = Base.V2.Zero();
-    let drag_pivot = null;
-    const rect = Base.Rect_new(10, 10, 200, 100);
-    const color = Base.RGBA(1, 0, 0, 1);
+    const ui = new Ui.UI(ctx, ipt);
+    const a = Base.Rect_new(10, 10, 200, 100);
+    const b = Base.Rect_new(300, 10, 200, 100);
+    const c = Base.Rect_new(10, 10, 200, 100);
+    const d = Base.Rect_new(10, 10, 200, 100);
+    ui.add_rect(Ui.UiRect_new(a, Base.RGBA_FULL_BLUE, true, Base.Rect_new(10, 10, 200, 20)));
+    ui.add_rect(Ui.UiRect_new(b, Base.RGBA_FULL_RED, true));
+    ui.add_rect(Ui.UiRect_new(c, Base.RGBA_FULL_GREEN, true));
+    ui.add_rect(Ui.UiRect_new(d, Base.RGBA_FULL_BLUE, true));
     function draw(dt) {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
         ipt.pool();
         ui.update();
-        if (Base.point_in_rect(ipt.cursor.position, rect)) {
-            if (ipt.is_down(Input.MBttn.M_LEFT)) {
-                if (!drag_pivot) {
-                    drag_pivot = ipt.cursor.position.copy();
-                }
-                drag_start.set(ipt.cursor.position).sub(rect.position);
-                dragging = true;
-            }
-        }
-        if (dragging) {
-            if (!ipt.is_down(Input.MBttn.M_LEFT)) {
-                dragging = false;
-                drag_pivot = null;
-            }
-            else {
-                console.log(drag_pivot, drag_start);
-                const new_position = ipt.cursor.position.clone().sub(drag_start);
-                rect.position.set(new_position);
-            }
-        }
-        ui.draw_rect(rect, color);
     }
     let prev_timestamp = 0;
     const frame = (timestamp) => {

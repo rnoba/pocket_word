@@ -113,6 +113,9 @@ export function RGBA(r, g, b, a = 1.0) {
     };
     return (color);
 }
+export const RGBA_FULL_RED = RGBA(1, 0, 0);
+export const RGBA_FULL_GREEN = RGBA(0, 1, 0);
+export const RGBA_FULL_BLUE = RGBA(0, 0, 1);
 const HEX = "0123456789ABCDEF";
 function ntox(n) {
     let r = "";

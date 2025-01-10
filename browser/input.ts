@@ -28,7 +28,7 @@ const _EVENT_FIELDS: Record<typeof _EVENTS[number], Array<string>> = {
 	"wheel": ["deltaX", "deltaY"],
 }
 
-type mEvent = Array<[typeof _EVENTS[number], Record<string, any>]>
+type mEvent = Array<[typeof _EVENTS[number], Record<string, any>]>;
 const event_queue: mEvent = [];
 
 function attach_listeners()
@@ -61,7 +61,14 @@ function dettach_listeners()
 	}
 }
 
-export function init()
+export interface InputInstance {
+	pool: () => void;
+	cursor: Cursor;
+	is_down: (btn: Btn) => boolean;
+	deinit: () => void;
+}
+
+export function init(): InputInstance
 {
 	attach_listeners();
 	const cursor: Cursor = {
