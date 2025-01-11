@@ -1,7 +1,7 @@
 import * as Sprite	from "./sprite.js";
 import * as Base		from "./base.js";
-import * as Ui			from "./ui.js";
 import * as Input		from "./input.js";
+import * as Ui		from "./ui_test.js";
 
 (async () => {
 	const canvas = document.getElementById("canvas") as HTMLCanvasElement;
@@ -13,9 +13,13 @@ import * as Input		from "./input.js";
 		throw new Error("Canvas 2D context not supported");
 	}
 	ctx.imageSmoothingEnabled = false;
+	Base.set_global_ctx(ctx);
+
 	const { width, height } = document.body.getBoundingClientRect();
 	canvas.width	= width; 
 	canvas.height = height;
+
+	let current_frame = 0;
 	//const camera: Base.Camera = {
 	//	width,
 	//	height,
@@ -27,27 +31,21 @@ import * as Input		from "./input.js";
 	//	is_locked: true,
 	//};
 	//
-	//const w = Base.camera_transform_screen(camera, 0, 0, 0);
-	//const s = Base.camera_transform_world(camera, w.x, w.y, 0);
-	//console.log(w.array(), s.array())
-
-	const ipt = Input.init();
-	const ui = new Ui.UI(ctx, ipt); 
-
-	const a:  Base.Rect = Base.Rect_new(10, 10, 200, 100);
-	const b:  Base.Rect = Base.Rect_new(300, 10, 200, 100);
-	const c:  Base.Rect = Base.Rect_new(10, 10, 200, 100);
-	const d:  Base.Rect = Base.Rect_new(10, 10, 200, 100);
-
-	ui.add_rect(Ui.UiRect_new(a, Base.RGBA_FULL_BLUE, true, Base.Rect_new(10, 10, 200, 20)));
-	ui.add_rect(Ui.UiRect_new(b, Base.RGBA_FULL_RED, true));
-	ui.add_rect(Ui.UiRect_new(c, Base.RGBA_FULL_GREEN, true));
-	ui.add_rect(Ui.UiRect_new(d, Base.RGBA_FULL_BLUE, true));
-
+	const _Input = Input.init(); 
+	Ui.set_input_instance(_Input);
 	function draw(dt: number)
 	{
-		ipt.pool();
-		ui.update();
+		_Input.pool();
+		Ui.FrameBegin(dt);
+		for (let i = 0; i < 1; i++)
+		{
+			const id = `btn ${i}`;
+			if (Ui.Button(id, Base.Rect(400 + i * 60, 300, 100, 40)))
+			{
+				console.log(id);
+			}
+		}
+		Ui.FrameEnd();
 	}
 
 	let prev_timestamp = 0;

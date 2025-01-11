@@ -77,6 +77,9 @@ export class UI
 	{
 		const id = this.element_count;
 		rect.id = id;
+		rect.rect.width = Base.round(rect.rect.width); 
+		rect.rect.height = Base.round(rect.rect.height); 
+
 		this.rects.set(id, rect);
 		this.#last_draw_state.unshift(id);
 		this.element_count = (this.element_count + 1) % _MAX_UI_ELEMENTS;
@@ -148,7 +151,6 @@ export class UI
 	update()
 	{
 		this.prepare_redraw_all();
-		console.log(this.#last_draw_state);
 		while (this.draw_qeue.length)
 		{
 			const ui_rect_idx = this.draw_qeue.shift()!;

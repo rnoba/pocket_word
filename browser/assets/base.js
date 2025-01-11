@@ -1,5 +1,9 @@
 export const TW = 64;
 export const TH = 32;
+export let GlobalContext = null;
+export function set_global_ctx(ctx) {
+    GlobalContext = ctx;
+}
 export class V2 {
     x;
     y;
@@ -120,7 +124,7 @@ const HEX = "0123456789ABCDEF";
 function ntox(n) {
     let r = "";
     do {
-        r = HEX[n & 15] + r;
+        r = HEX[n % 16] + r;
         n >>>= 4;
     } while (n > 0);
     return (r.padStart(2, "0"));
@@ -169,10 +173,38 @@ export function point_in_rect(point, rect) {
     }
     return (true);
 }
-export function Rect_new(x, y, w, h) {
+export function Rect(x, y, w, h) {
     return {
         position: V2.New(x, y),
         width: w,
         height: h
     };
+}
+export function assert(p, msg = "") {
+    if (!p) {
+        throw new Error(`assertion failed ${msg}`);
+    }
+}
+export function floor(n) {
+    return (n >>> 0);
+}
+export function round(n) {
+    return (floor(n + 0.5));
+}
+const UINT64_MAX = 2n ** 64n;
+export function u64(value) {
+    return BigInt(value) % UINT64_MAX;
+}
+const InitialFNV = 2166136261;
+const FNVMultiple = 16777619;
+export function hash_string(str, seed = 0) {
+    let hash = BigInt(InitialFNV) * BigInt(seed);
+    for (let i = 0; i < str.length; i++) {
+        hash = hash ^ BigInt(str.charCodeAt(i));
+        hash = (hash * BigInt(FNVMultiple)) % UINT64_MAX;
+    }
+    return hash;
+}
+export function has_flag(value, flag) {
+    return (value & flag) === flag;
 }

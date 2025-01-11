@@ -1,6 +1,13 @@
 export const TW	= 64;
 export const TH	= 32;
 
+export let GlobalContext: CanvasRenderingContext2D | null = null;
+
+export function set_global_ctx(ctx: CanvasRenderingContext2D)
+{
+	GlobalContext = ctx;
+}
+
 export class V2 {
 	x: number;
 	y: number;
@@ -135,7 +142,7 @@ function ntox(n: number): string
 	let r: string = "";
 	do
 	{
-		r = HEX[n & 15] + r;
+		r = HEX[n % 16] + r;
 		n >>>= 4;
 	} while (n > 0);
 	return (r.padStart(2, "0"));
@@ -229,11 +236,53 @@ export function point_in_rect(point: V2, rect: Rect): Boolean {
 	return (true);
 }
 
-export function Rect_new(x: number, y: number, w: number, h: number): Rect
+export function Rect(x: number, y: number, w: number, h: number): Rect
 {
 	return {
 		position: V2.New(x, y),
 		width: w,
 		height: h
 	}
+}
+
+export function assert(p: boolean, msg: string = "")
+{
+	if (!p)
+	{
+		throw new Error(`assertion failed ${msg}`);
+	}
+}
+
+export function floor(n: number)
+{
+	return (n >>> 0);
+}
+
+export function round(n: number)
+{
+	return (floor(n + 0.5));
+}
+
+
+const UINT64_MAX	= 2n**64n;
+
+export function u64(value: number | bigint | string): bigint {
+	return BigInt(value) % UINT64_MAX;
+}
+
+const InitialFNV	= 2166136261;
+const FNVMultiple = 16777619;
+export function hash_string(str: string, seed: number = 0): bigint 
+{
+	let hash = BigInt(InitialFNV) * BigInt(seed);
+	for(let i = 0; i < str.length; i++)
+	{
+		hash = hash ^ BigInt(str.charCodeAt(i));
+		hash = (hash * BigInt(FNVMultiple)) % UINT64_MAX;
+	}
+	return hash;
+}
+
+export function has_flag(value: number, flag: number): boolean {
+    return (value & flag) === flag;
 }
