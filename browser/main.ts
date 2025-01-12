@@ -43,17 +43,17 @@ import * as Ui		from "./ui.js";
 		{
 			console.log("btx");
 		}
-		//if (Ui.Button("btx", Ui.Rect(parent.widget.rect.position.x, parent.widget.rect.position.y, 0, 0)).clicked)
-		//{
-		//	console.log("btx");
-		//}
-		//for (let i = 0; i < 10; i++)
-		//{
-		//	if (Ui.Button("button " + i, Ui.Rect(90, 20 + i * 65, 100, 40)).clicked)
-		//	{
-		//		console.log("clicked " + i);
-		//	}
-		//}
+		if (Ui.Button("btx", Ui.Rect([0, 0], [0, 0])).clicked)
+		{
+			console.log("btx");
+		}
+		for (let i = 0; i < 10; i++)
+		{
+			if (Ui.Button("button " + i, Ui.Rect([90, 20 + i * 65], [100, 40])).clicked)
+			{
+				console.log("clicked " + i);
+			}
+		}
 		Ui.FrameEnd();
 	}
 

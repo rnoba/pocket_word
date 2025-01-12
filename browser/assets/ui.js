@@ -67,7 +67,7 @@ function Ui_PopFront() {
         UiState.cleanup.set(widget.id, { frame: UiState.current_frame, widget });
         Ui_RectClear(widget);
     }
-    return widget;
+    return (widget);
 }
 function Ui_PopBack() {
     return UiState.stack.pop();
@@ -226,10 +226,7 @@ function Ui_WidgetRecalculate(widget) {
     widget.actual_width = widget.rect.width - (Ui_DefaultBorderSize * 2) - Ui_DefaultWidgetPaddingPxH2;
     widget.actual_height = widget.rect.height - (Ui_DefaultBorderSize * 2) - Ui_DefaultWidgetPaddingPxV2;
 }
-function Ui_DrawWidget() {
-    const widget = Ui_PopFront();
-    if (!widget)
-        return;
+function Ui_DrawWidget(widget) {
     let rect = widget.rect;
     let text_offset_x = 0;
     let text_offset_y = 0;
@@ -339,7 +336,6 @@ export function Ui_WidgetWithInteraction(widget) {
     if (Ui_PointInRect(widget.id) && UiState.hot === Base.u640) {
         Ui_WidgetSetHot(widget.id);
     }
-    Ui_DrawWidget();
     return (interaction);
 }
 export function Button(text, rect) {
@@ -359,13 +355,17 @@ export function Container(text, rect) {
 }
 export function FrameBegin(dt) {
     UiState.dt = dt;
-}
-export function FrameEnd() {
     for (const [id, { frame, widget }] of [...UiState.cleanup.entries()]) {
         if (UiState.current_frame - frame > 5) {
             Ui_RectClear(widget);
             UiState.cleanup.delete(id);
         }
+    }
+}
+export function FrameEnd() {
+    while (UiState.stack.length) {
+        const widget = Ui_PopFront();
+        Ui_DrawWidget(widget);
     }
     UiState.current_frame += 1;
 }

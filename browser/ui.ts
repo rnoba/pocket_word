@@ -126,7 +126,7 @@ function Ui_PopFront()
 		UiState.cleanup.set(widget.id, { frame: UiState.current_frame, widget });
 		Ui_RectClear(widget);
 	}
-	return widget;
+	return (widget);
 }
 
 function Ui_PopBack()
@@ -367,15 +367,12 @@ function Ui_WidgetRecalculate(widget: Ui_Widget)
 	widget.actual_height	= widget.rect.height-(Ui_DefaultBorderSize*2)-Ui_DefaultWidgetPaddingPxV2;
 }
 
-function Ui_DrawWidget()
+function Ui_DrawWidget(widget: Ui_Widget)
 {
-	const widget = Ui_PopFront();
-	if (!widget) return;
-
 	let rect = widget!.rect;
+
 	let text_offset_x = 0;
 	let text_offset_y = 0;
-
 	if (Base.has_flag(widget!.flags, UiDrawText))
 	{
 		const text_rect = widget!.text_rect!;
@@ -432,7 +429,7 @@ function Ui_DrawWidget()
 		Ui_DrawBorders(widget!);
 	}
 	Ui_WidgetRecalculate(widget!); 
-	Ui_SetSize(widget, rect.width, rect.height);
+	Ui_SetSize(widget!, rect.width, rect.height);
 }
 
 export interface WidgetInteracion
@@ -533,7 +530,6 @@ export function Ui_WidgetWithInteraction(widget: Ui_Widget)
 	{
 		Ui_WidgetSetHot(widget.id);
 	}
-	Ui_DrawWidget();
 	return (interaction);
 }
 
@@ -563,11 +559,6 @@ export function Container(text: string, rect: Base.Rect): WidgetInteracion
 export function FrameBegin(dt: number)
 {
 	UiState.dt = dt;
-
-}
-
-export function FrameEnd()
-{
 	for (const [id, {frame, widget}] of [...UiState.cleanup.entries()])
 	{
 		if (UiState.current_frame - frame > 5)
@@ -575,6 +566,15 @@ export function FrameEnd()
 			Ui_RectClear(widget);
 			UiState.cleanup.delete(id);
 		}
+	}
+}
+
+export function FrameEnd()
+{
+	while (UiState.stack.length)
+	{
+		const widget = Ui_PopFront()!;
+		Ui_DrawWidget(widget);
 	}
 	UiState.current_frame += 1;
 }
