@@ -1,7 +1,7 @@
 import * as Sprite	from "./sprite.js";
 import * as Base		from "./base.js";
 import * as Input		from "./input.js";
-import * as Ui		from "./ui_test.js";
+import * as Ui		from "./ui.js";
 
 (async () => {
 	const canvas = document.getElementById("canvas") as HTMLCanvasElement;
@@ -31,20 +31,29 @@ import * as Ui		from "./ui_test.js";
 	//	is_locked: true,
 	//};
 	//
-	const _Input = Input.init(); 
-	Ui.set_input_instance(_Input);
+	const ipt = Input.init(); 
+	Ui.SetInputInstance(ipt);
 	function draw(dt: number)
 	{
-		_Input.pool();
+		ipt.pool();
 		Ui.FrameBegin(dt);
-		for (let i = 0; i < 1; i++)
+
+		const parent = Ui.Container("container", Ui.Rect([0, 0], [300, 600]));
+		if (Ui.Button("btx", Ui.Rect(Ui.ParentP(parent), Ui.TextS())).clicked)
 		{
-			const id = `btn ${i}`;
-			if (Ui.Button(id, Base.Rect(400 + i * 60, 300, 100, 40)))
-			{
-				console.log(id);
-			}
+			console.log("btx");
 		}
+		//if (Ui.Button("btx", Ui.Rect(parent.widget.rect.position.x, parent.widget.rect.position.y, 0, 0)).clicked)
+		//{
+		//	console.log("btx");
+		//}
+		//for (let i = 0; i < 10; i++)
+		//{
+		//	if (Ui.Button("button " + i, Ui.Rect(90, 20 + i * 65, 100, 40)).clicked)
+		//	{
+		//		console.log("clicked " + i);
+		//	}
+		//}
 		Ui.FrameEnd();
 	}
 

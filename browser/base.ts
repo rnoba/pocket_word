@@ -29,9 +29,6 @@ export class V2 {
 		this.y = b.y;
 		return this;
 	}
-	copy(): V2 {
-		return new V2(this.x, this.y);
-	}
 	len(): number {
 		const l = this.x*this.x+this.y*this.y;
 		return Math.sqrt(l);
@@ -122,18 +119,22 @@ export type RGBA = {
 
 export function RGBA(r: number, g: number, b: number, a: number = 1.0): RGBA
 {
+	const r_norm = Clamp(r, 0, 255);
+	const g_norm = Clamp(g, 0, 255);
+	const b_norm = Clamp(b, 0, 255);
+
 	const color: RGBA = {
-		r: ((r * 255) + 0.5) & 0xFF,
-		g: ((g * 255) + 0.5) & 0xFF,
-		b: ((b * 255) + 0.5) & 0xFF,
+		r: r_norm, 
+		g: g_norm,
+		b: b_norm,
 		a: Math.max(Math.min(a, 1), 0),
 	}
 	return (color);
 }
 
-export const RGBA_FULL_RED = RGBA(1, 0, 0);
-export const RGBA_FULL_GREEN = RGBA(0, 1, 0);
-export const RGBA_FULL_BLUE = RGBA(0, 0, 1);
+export const RGBA_FULL_RED		= RGBA(255, 0, 0);
+export const RGBA_FULL_GREEN	= RGBA(0, 255, 0);
+export const RGBA_FULL_BLUE		= RGBA(0, 0, 255);
 
 const HEX = "0123456789ABCDEF";
 
@@ -263,12 +264,18 @@ export function round(n: number)
 	return (floor(n + 0.5));
 }
 
+export function Clamp(value: number, min: number, max: number): number {
+	return (Math.min(Math.max(value, min), max));
+}
 
 const UINT64_MAX	= 2n**64n;
 
+// i dont care
 export function u64(value: number | bigint | string): bigint {
 	return BigInt(value) % UINT64_MAX;
 }
+
+export const u640 = u64(0);
 
 const InitialFNV	= 2166136261;
 const FNVMultiple = 16777619;
@@ -286,3 +293,4 @@ export function hash_string(str: string, seed: number = 0): bigint
 export function has_flag(value: number, flag: number): boolean {
     return (value & flag) === flag;
 }
+

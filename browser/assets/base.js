@@ -25,9 +25,6 @@ export class V2 {
         this.y = b.y;
         return this;
     }
-    copy() {
-        return new V2(this.x, this.y);
-    }
     len() {
         const l = this.x * this.x + this.y * this.y;
         return Math.sqrt(l);
@@ -109,17 +106,20 @@ export class V2 {
     }
 }
 export function RGBA(r, g, b, a = 1.0) {
+    const r_norm = Clamp(r, 0, 255);
+    const g_norm = Clamp(g, 0, 255);
+    const b_norm = Clamp(b, 0, 255);
     const color = {
-        r: ((r * 255) + 0.5) & 0xFF,
-        g: ((g * 255) + 0.5) & 0xFF,
-        b: ((b * 255) + 0.5) & 0xFF,
+        r: r_norm,
+        g: g_norm,
+        b: b_norm,
         a: Math.max(Math.min(a, 1), 0),
     };
     return (color);
 }
-export const RGBA_FULL_RED = RGBA(1, 0, 0);
-export const RGBA_FULL_GREEN = RGBA(0, 1, 0);
-export const RGBA_FULL_BLUE = RGBA(0, 0, 1);
+export const RGBA_FULL_RED = RGBA(255, 0, 0);
+export const RGBA_FULL_GREEN = RGBA(0, 255, 0);
+export const RGBA_FULL_BLUE = RGBA(0, 0, 255);
 const HEX = "0123456789ABCDEF";
 function ntox(n) {
     let r = "";
@@ -191,10 +191,15 @@ export function floor(n) {
 export function round(n) {
     return (floor(n + 0.5));
 }
+export function Clamp(value, min, max) {
+    return (Math.min(Math.max(value, min), max));
+}
 const UINT64_MAX = 2n ** 64n;
+// i dont care
 export function u64(value) {
     return BigInt(value) % UINT64_MAX;
 }
+export const u640 = u64(0);
 const InitialFNV = 2166136261;
 const FNVMultiple = 16777619;
 export function hash_string(str, seed = 0) {

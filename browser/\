@@ -59,9 +59,7 @@ interface Ui_State
 	current_frame: number;
 	dt: number;
 	stack: Ui_Widget[];
-	cleanup: Map<WidgetId, {widget: Ui_Widget, frame: number}>; 
 	draggables: Map<WidgetId, Ui_Draggable>;
-	sizes: Map<WidgetId, {width: number, height: number}>;
 }
 
 const UiTextCenteredX		= 1 << 0;
@@ -85,8 +83,6 @@ const UiState: Ui_State = {
 	active: Base.u640,
 	hot: Base.u640,
 	stack: [],
-	sizes: new Map(),
-	cleanup: new Map(),
 	current_frame: 0,
 	is_dragging: false,
 	draggind_id: Base.u640,
@@ -95,7 +91,7 @@ const UiState: Ui_State = {
 	draggables: new Map(),
 }
 
-export function SetInputInstance(input: Input.InputInstance)
+export function set_input_instance(input: Input.InputInstance)
 {
 	UiState.input = input;
 }
@@ -114,7 +110,7 @@ function Ui_Push(wid: Ui_Widget)
 
 	if (push)
 	{
-		UiState.stack.push(wid);
+		UiState.stack.unshift(wid);
 	}
 }
 
@@ -123,7 +119,6 @@ function Ui_PopFront()
 	const widget = UiState.stack.shift();
 	if (widget)
 	{
-		UiState.cleanup.set(widget.id, { frame: UiState.current_frame, widget });
 		Ui_RectClear(widget);
 	}
 	return widget;
@@ -141,25 +136,14 @@ function Ui_SetPosition(widget: Ui_Widget, new_pos: Base.V2)
 		console.warn("position of non draggables elements are not persistant");
 		return;
 	}
-
 	const draggable = UiState.draggables.get(widget.id)!;
 	Ui_RectClearPos(widget, draggable.previous_position);
-	UiState.draggables.set(widget.id, {
-		previous_position: draggable.position,
-		position: new_pos,
-		frame: draggable.frame
-	})!;
+	draggable.previous_position.set(widget.rect.position);
+	draggable.position.set(new_pos);
 }
 
-function Ui_SetSize(widget: Ui_Widget, width: number, height: number)
+export function Rect(x: number, y: number, width: number, height: number)
 {
-	UiState.sizes.set(widget.id, {width, height})!;
-}
-
-export function Rect(a: number[], b: number[])
-{
-	const [x, y] = a;
-	const [width, height] = b;
 	return (Base.Rect(x, y, width + Ui_DefaultWidgetPaddingPxH2, height + Ui_DefaultWidgetPaddingPxV2));
 }
 
@@ -231,12 +215,7 @@ function Ui_Widget_new(
 			widget.rect.position.set(draggable.position);
 		}
 	}
-	const sz = UiState.sizes.get(id);
-	if (sz)
-	{
-		widget.rect.width		= sz.width;
-		widget.rect.height	= sz.height;
-	}
+
 	Ui_Push(widget);
 	return (widget);
 }
@@ -255,7 +234,7 @@ function Ui_RectFromText(text: string, font_size_px: number = Ui_DefaultTextSize
 	return Base.Rect(
 		metrics.actualBoundingBoxLeft,//	+ Ui_DefaultWidgetPaddingPxH,
 		metrics.actualBoundingBoxAscent,//+ Ui_DefaultWidgetPaddingPxV,
-		Base.round(w), Base.round(h));
+		w, h);
 }
 
 function Ui_FindWidget(id: WidgetId)
@@ -317,12 +296,12 @@ function Ui_MButtonDown(): boolean
 	return (UiState.input!.is_down(Input.MBttn.M_LEFT));
 }
 
-function Ui_WidgetIsActive(id: WidgetId): boolean
+function UiWidgetIsActive(id: WidgetId): boolean
 {
 	return (id === UiState.active);
 }
 
-function Ui_DrawBorders(widget: Ui_Widget)
+function UiDrawBorders(widget: Ui_Widget)
 {
 	Base.assert(Base.GlobalContext !== null, "`Ui_DrawText()` GlobalContext must be initialized");
 	const px	= widget.border_size_px;
@@ -343,17 +322,17 @@ function Ui_DrawBorders(widget: Ui_Widget)
 	Base.GlobalContext!.stroke();
 }
 
-function Ui_WidgetIsHot(id: WidgetId): boolean
+function UiWidgetIsHot(id: WidgetId): boolean
 {
 	return (id === UiState.hot);
 }
 
-function Ui_WidgetSetActive(id: WidgetId)
+function UiWidgetSetActive(id: WidgetId)
 {
 	UiState.active = id;
 }
 
-function Ui_WidgetSetHot(id: WidgetId)
+function UiWidgetSetHot(id: WidgetId)
 {
 	if (UiState.active === Base.u640)
 	{
@@ -361,16 +340,35 @@ function Ui_WidgetSetHot(id: WidgetId)
 	}
 }
 
-function Ui_WidgetRecalculate(widget: Ui_Widget)
+export function FrameBegin(dt: number)
+{
+	UiState.dt = dt;
+
+	for (const widget of UiState.stack)
+	{
+		if (UiWidgetIsHot(widget.id) && !Ui_PointInRect(widget.id))
+		{
+			UiWidgetSetHot(Base.u640);
+		}
+	}
+}
+
+export function FrameEnd()
+{
+	UiState.current_frame += 1;
+}
+
+function UiWidgetRecalculate(widget: Ui_Widget)
 {
 	widget.actual_width		= widget.rect.width-(Ui_DefaultBorderSize*2)-Ui_DefaultWidgetPaddingPxH2;
 	widget.actual_height	= widget.rect.height-(Ui_DefaultBorderSize*2)-Ui_DefaultWidgetPaddingPxV2;
 }
 
-function Ui_DrawWidget()
+function UiDrawWidget(id: WidgetId)
 {
-	const widget = Ui_PopFront();
-	if (!widget) return;
+	const widget = Ui_FindWidget(id);
+	Base.assert(widget !== null, "UiDrawWidget()");
+	//console.log(widget!.rect.position, widget!.id);
 
 	let rect = widget!.rect;
 	let text_offset_x = 0;
@@ -408,11 +406,11 @@ function Ui_DrawWidget()
 	if (Base.has_flag(widget!.flags, UiDrawBackground))
 	{
 		let color = widget!.background_color;
-		if (Ui_WidgetIsHot(widget!.id))
+		if (UiWidgetIsHot(widget!.id))
 		{
 			color = widget!.hot_color;
 		}
-		if (Ui_WidgetIsActive(widget!.id))
+		if (UiWidgetIsActive(widget!.id))
 		{
 			color = widget!.active_color;
 		}
@@ -429,10 +427,10 @@ function Ui_DrawWidget()
 	}
 	if (Base.has_flag(widget!.flags, UiDrawBorder))
 	{
-		Ui_DrawBorders(widget!);
+		UiDrawBorders(widget!);
 	}
-	Ui_WidgetRecalculate(widget!); 
-	Ui_SetSize(widget, rect.width, rect.height);
+	UiWidgetRecalculate(widget!) 
+	Ui_PopFront();
 }
 
 export interface WidgetInteracion
@@ -442,7 +440,7 @@ export interface WidgetInteracion
 	dragging: boolean;
 }
 
-export function Ui_WidgetWithInteraction(widget: Ui_Widget)
+export function UiWidgetWithInteraction(widget: Ui_Widget)
 {
 	const interaction: WidgetInteracion = {
 		widget,
@@ -456,43 +454,13 @@ export function Ui_WidgetWithInteraction(widget: Ui_Widget)
 		widget.flags &= ~(UiDragabble);
 	}
 
-	if (Base.has_flag(widget.flags, UiClickable))
-	{
-		if (Ui_WidgetIsActive(widget.id))
-		{
-			if (!Ui_MButtonDown())
-			{
-				if (Ui_WidgetIsHot(widget.id))
-				{
-						interaction.clicked = true;
-				}
-				Ui_WidgetSetActive(Base.u640);
-			}
-		}
-		else if (Ui_WidgetIsHot(widget.id))
-		{
-			if (Ui_MButtonDown())
-			{
-				Ui_WidgetSetActive(widget.id);
-			}
-		}
-
-		for (const widget of UiState.stack)
-		{
-			if (Ui_WidgetIsHot(widget.id) && !Ui_PointInRect(widget.id))
-			{
-				Ui_WidgetSetHot(Base.u640);
-			}
-		}
-	}
-
 	if (Base.has_flag(widget.flags, UiDragabble))
 	{
-		if (Ui_WidgetIsHot(widget.id) && !UiState.is_dragging)
+		if (UiWidgetIsHot(widget.id) && !UiState.is_dragging)
 		{
 			if (Ui_MButtonDown())
 			{
-				Ui_WidgetSetActive(widget.id);
+				UiWidgetSetActive(widget.id);
 				UiState.is_dragging = true;
 				UiState.draggind_id = widget.id;
 				if (!UiState.drag_offset)
@@ -501,90 +469,72 @@ export function Ui_WidgetWithInteraction(widget: Ui_Widget)
 				}
 			}
 		}
-		if (Ui_WidgetIsActive(widget.id) && UiState.is_dragging && UiState.draggind_id === widget.id)
+		if (UiState.is_dragging && UiState.draggind_id === widget.id)
 		{
 			if (!Ui_MButtonDown())
 			{
 				UiState.is_dragging = false;
 				UiState.draggind_id = Base.u640;
 				UiState.drag_offset = null; 
-				Ui_WidgetSetActive(Base.u640);
+				UiWidgetSetActive(Base.u640);
 			}
 			else
 			{
 				interaction.dragging = true;
-				const new_position = UiState.input!.cursor.position
-					.clone()
-					.sub(UiState.drag_offset!)
-				Ui_SetPosition(widget, new_position); 
+				const new_position = UiState.input!.cursor.position.clone().sub(UiState.drag_offset!)
+				Ui_SetPosition(widget, new_position);
 			}
 		}
 
-		for (const [id, _] of [...UiState.draggables.entries()])
+		for (const [k, v] of [...UiState.draggables.entries()])
 		{
-			if (!UiState.is_dragging && Ui_WidgetIsHot(id) && !Ui_PointInRect(id))
+			if (!UiState.is_dragging && UiWidgetIsHot(k) && !Ui_PointInRect(k))
 			{
-				Ui_WidgetSetHot(Base.u640);
+				UiWidgetSetHot(Base.u640);
 			}
 		}
 
 	}
-	if (Ui_PointInRect(widget.id) && UiState.hot === Base.u640)
+
+	if (Base.has_flag(widget.flags, UiClickable))
 	{
-		Ui_WidgetSetHot(widget.id);
+		if (UiWidgetIsActive(widget.id))
+		{
+			if (!Ui_MButtonDown())
+			{
+				if (UiWidgetIsHot(widget.id))
+				{
+						interaction.clicked = true;
+				}
+				UiWidgetSetActive(Base.u640);
+			}
+		}
+		else if (UiWidgetIsHot(widget.id))
+		{
+			if (Ui_MButtonDown())
+			{
+				UiWidgetSetActive(widget.id);
+			}
+		}
 	}
-	Ui_DrawWidget();
+
+	if (Ui_PointInRect(widget.id))
+	{
+		UiWidgetSetHot(widget.id);
+	}
+	UiDrawWidget(widget.id);
 	return (interaction);
 }
 
 export function Button(text: string, rect: Base.Rect): WidgetInteracion 
 {
-	const widget = Ui_Widget_new(text,
-															 rect,
-															 UiDrawBorder		|
-															 UiTextCentered	|
-															 UiDrawText			|
-															 UiClickable		|
-															 UiDrawBackground);
-	return (Ui_WidgetWithInteraction(widget));
+	const widget = Ui_Widget_new(text, rect, UiDrawBorder|UiTextCentered|UiDrawText|UiClickable);
+	return (UiWidgetWithInteraction(widget));
 }
 
 export function Container(text: string, rect: Base.Rect): WidgetInteracion 
 {
-	const widget = Ui_Widget_new(text, 
-															 rect,
-															 UiDrawBackground	|
-															 UiDragabble			|
-															 UiDrawText				|
-															 UiTextCentered);
-	return (Ui_WidgetWithInteraction(widget));
-}
-
-export function FrameBegin(dt: number)
-{
-	UiState.dt = dt;
-
-}
-
-export function FrameEnd()
-{
-	for (const [id, {frame, widget}] of [...UiState.cleanup.entries()])
-	{
-		if (UiState.current_frame - frame > 5)
-		{
-			Ui_RectClear(widget);
-			UiState.cleanup.delete(id);
-		}
-	}
-	UiState.current_frame += 1;
-}
-
-export function ParentP(parent: WidgetInteracion)
-{
-	return (parent.widget.rect.position.array());
-}
-
-export function TextS()
-{
-	return ([0, 0]);
+	// i have no idea how i'll drag the 'children' along side the parent
+	const widget = Ui_Widget_new(text, rect, UiDrawBackground|UiDragabble);
+	return (UiWidgetWithInteraction(widget));
 }

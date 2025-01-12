@@ -19,6 +19,7 @@ const _EVENTS = [
 	"pointerup",
 	"wheel",
 	"pointermove",
+	"mouseout",
 ] as const; 
 
 const _EVENT_FIELDS: Record<typeof _EVENTS[number], Array<string>> = {
@@ -26,6 +27,7 @@ const _EVENT_FIELDS: Record<typeof _EVENTS[number], Array<string>> = {
 	"pointerdown": ["buttons"],
 	"pointerup": ["buttons"],
 	"wheel": ["deltaX", "deltaY"],
+	"mouseout": ["relatedTarget", "toElement"],
 }
 
 type mEvent = Array<[typeof _EVENTS[number], Record<string, any>]>;
@@ -43,12 +45,12 @@ function attach_listeners()
 			{
 				evt_data[field] = (evt as any)[field];
 			}
-			const btn_data: Record<string, any> = {};
-			if (_evt == "pointermove")
-			{
-				btn_data["buttons"] = (evt as PointerEvent).buttons;
-				event_queue.unshift(["pointerdown", btn_data]);
-			}
+			//const btn_data: Record<string, any> = {};
+			//if (_evt == "pointermove")
+			//{
+			//	btn_data["buttons"] = (evt as PointerEvent).buttons;
+			//	event_queue.unshift(["pointerup", btn_data]);
+			//}
 			event_queue.unshift([_evt, evt_data]);
 		});
 	}
@@ -96,15 +98,10 @@ export function init(): InputInstance
 		},
 		pool: function(): void {
 			while (event_queue.length)
-		{
+			{
 				const evt = event_queue.shift()!;
 				switch (evt[0])
-					{
-					case "pointermove":
-					{
-							cursor.position.x = (evt[1].clientX as number);
-							cursor.position.y = (evt[1].clientY as number);
-						} break;
+				{
 					case "pointerdown":
 					case "pointerup":
 					{
@@ -112,7 +109,20 @@ export function init(): InputInstance
 							cursor.buttons[MBttn.M_LEFT]	= !!(buttons & 1);
 							cursor.buttons[MBttn.M_RIGHT] = !!(buttons & 2);
 							cursor.buttons[MBttn.M_WHEEL] = !!(buttons & 4);
-						} break;
+					} break;
+					case "mouseout":
+					{ 
+						//if (!evt[1].relatedTarget && !evt[1].toElement) 
+						//{
+						cursor.buttons[MBttn.M_LEFT]	= false; 
+						cursor.buttons[MBttn.M_RIGHT] = false; 
+						cursor.buttons[MBttn.M_WHEEL] = false; 
+					}
+					case "pointermove":
+					{
+							cursor.position.x = (evt[1].clientX as number);
+							cursor.position.y = (evt[1].clientY as number);
+					} break;
 					default: 
 						break;
 				}

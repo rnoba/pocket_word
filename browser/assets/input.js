@@ -10,12 +10,14 @@ const _EVENTS = [
     "pointerup",
     "wheel",
     "pointermove",
+    "mouseout",
 ];
 const _EVENT_FIELDS = {
     "pointermove": ["clientX", "clientY"],
     "pointerdown": ["buttons"],
     "pointerup": ["buttons"],
     "wheel": ["deltaX", "deltaY"],
+    "mouseout": ["relatedTarget", "toElement"],
 };
 const event_queue = [];
 function attach_listeners() {
@@ -27,11 +29,12 @@ function attach_listeners() {
             for (const field of _EVENT_FIELDS[_evt]) {
                 evt_data[field] = evt[field];
             }
-            const btn_data = {};
-            if (_evt == "pointermove") {
-                btn_data["buttons"] = evt.buttons;
-                event_queue.unshift(["pointerdown", btn_data]);
-            }
+            //const btn_data: Record<string, any> = {};
+            //if (_evt == "pointermove")
+            //{
+            //	btn_data["buttons"] = (evt as PointerEvent).buttons;
+            //	event_queue.unshift(["pointerup", btn_data]);
+            //}
             event_queue.unshift([_evt, evt_data]);
         });
     }
@@ -69,12 +72,6 @@ export function init() {
             while (event_queue.length) {
                 const evt = event_queue.shift();
                 switch (evt[0]) {
-                    case "pointermove":
-                        {
-                            cursor.position.x = evt[1].clientX;
-                            cursor.position.y = evt[1].clientY;
-                        }
-                        break;
                     case "pointerdown":
                     case "pointerup":
                         {
@@ -82,6 +79,20 @@ export function init() {
                             cursor.buttons[MBttn.M_LEFT] = !!(buttons & 1);
                             cursor.buttons[MBttn.M_RIGHT] = !!(buttons & 2);
                             cursor.buttons[MBttn.M_WHEEL] = !!(buttons & 4);
+                        }
+                        break;
+                    case "mouseout":
+                        {
+                            //if (!evt[1].relatedTarget && !evt[1].toElement) 
+                            //{
+                            cursor.buttons[MBttn.M_LEFT] = false;
+                            cursor.buttons[MBttn.M_RIGHT] = false;
+                            cursor.buttons[MBttn.M_WHEEL] = false;
+                        }
+                    case "pointermove":
+                        {
+                            cursor.position.x = evt[1].clientX;
+                            cursor.position.y = evt[1].clientY;
                         }
                         break;
                     default:
