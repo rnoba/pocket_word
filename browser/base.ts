@@ -110,6 +110,8 @@ export class V2 {
 	}
 }
 
+export const V2Zero = V2.Zero();
+
 export type RGBA = {
 	r: number;
 	g: number;

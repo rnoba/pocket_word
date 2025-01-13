@@ -32,18 +32,19 @@ import * as Ui from "./ui.js";
     function draw(dt) {
         ipt.pool();
         Ui.FrameBegin(dt);
-        const parent = Ui.Container("container", Ui.Rect([0, 0], [300, 600]));
-        if (Ui.Button("btx", Ui.Rect(Ui.ParentP(parent), Ui.TextS())).clicked) {
-            console.log("btx");
+        if (Ui.Button("button dsaoiudjasidj", Ui.Rect([300, 300], [100, 40])).clicked) {
+            console.log("clicked");
         }
-        if (Ui.Button("btx", Ui.Rect([0, 0], [0, 0])).clicked) {
-            console.log("btx");
-        }
-        for (let i = 0; i < 10; i++) {
-            if (Ui.Button("button " + i, Ui.Rect([90, 20 + i * 65], [100, 40])).clicked) {
-                console.log("clicked " + i);
-            }
-        }
+        //const parent = Ui.Container("container", Ui.Rect([0, 0], [300, 600]));
+        //
+        //const parent_position = Ui.ParentP(parent);
+        //for (let i = 0; i < 5; i++)
+        //{
+        //	if (Ui.Button("button " + i, Ui.Rect([parent_position[0], parent_position[1] + i * 65], [100, 40])).clicked)
+        //	{
+        //		console.log("clicked " + i);
+        //	}
+        //}
         Ui.FrameEnd();
     }
     let prev_timestamp = 0;

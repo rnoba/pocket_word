@@ -105,6 +105,7 @@ export class V2 {
         return [this.x, this.y];
     }
 }
+export const V2Zero = V2.Zero();
 export function RGBA(r, g, b, a = 1.0) {
     const r_norm = Clamp(r, 0, 255);
     const g_norm = Clamp(g, 0, 255);

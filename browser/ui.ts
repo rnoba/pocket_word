@@ -52,9 +52,8 @@ interface Ui_State
 	active: WidgetId;
 	hot: WidgetId;
 
-	is_dragging: boolean;
-	draggind_id: WidgetId;
-	drag_offset: Base.V2 | null;
+	is_dragging: boolean; 
+	drag_start: Base.V2;
 
 	current_frame: number;
 	dt: number;
@@ -88,9 +87,8 @@ const UiState: Ui_State = {
 	sizes: new Map(),
 	cleanup: new Map(),
 	current_frame: 0,
-	is_dragging: false,
-	draggind_id: Base.u640,
-	drag_offset: null,
+	is_dragging: false, 
+	drag_start: Base.V2.Zero(),
 	dt: 0,
 	draggables: new Map(),
 }
@@ -134,7 +132,7 @@ function Ui_PopBack()
 	return UiState.stack.pop();
 }
 
-function Ui_SetPosition(widget: Ui_Widget, new_pos: Base.V2)
+function Ui_SetPosition(widget: Ui_Widget, delta: Base.V2)
 {
 	if (!Base.has_flag(widget.flags, UiDragabble))
 	{
@@ -144,16 +142,16 @@ function Ui_SetPosition(widget: Ui_Widget, new_pos: Base.V2)
 
 	const draggable = UiState.draggables.get(widget.id)!;
 	Ui_RectClearPos(widget, draggable.previous_position);
-	UiState.draggables.set(widget.id, {
-		previous_position: draggable.position,
-		position: new_pos,
-		frame: draggable.frame
-	})!;
+	draggable.previous_position.set(widget.rect.position);
+	draggable.position.set(delta);
 }
 
 function Ui_SetSize(widget: Ui_Widget, width: number, height: number)
 {
-	UiState.sizes.set(widget.id, {width, height})!;
+	UiState.sizes.set(widget.id, {
+		width,
+		height
+	})!;
 }
 
 export function Rect(a: number[], b: number[])
@@ -162,6 +160,11 @@ export function Rect(a: number[], b: number[])
 	const [width, height] = b;
 	return (Base.Rect(x, y, width + Ui_DefaultWidgetPaddingPxH2, height + Ui_DefaultWidgetPaddingPxV2));
 }
+
+export const WidgetPTop			= 0;
+export const WidgetPLeft		= 1;
+export const WidgetPBottom	= 2;
+export const WidgetPRight		= 3;
 
 interface Ui_Widget
 {
@@ -174,6 +177,7 @@ interface Ui_Widget
 	flags: number;
 	border_size_px: number;
 	text_size_px: number;
+	padding: [number, number, number, number];
 	font: string;
 	background_color: Base.RGBA;
 	active_color: Base.RGBA;
@@ -203,6 +207,12 @@ function Ui_Widget_new(
 	const widget: Ui_Widget = {
 		id,
 		rect,
+		padding: [
+			Ui_DefaultWidgetPaddingPxV,
+			Ui_DefaultWidgetPaddingPxH,
+			Ui_DefaultWidgetPaddingPxV,
+			Ui_DefaultWidgetPaddingPxH
+		],
 		str: text,
 		flags: flags,
 		background_color: Ui_DefaultBackgroundcolor,
@@ -223,19 +233,23 @@ function Ui_Widget_new(
 		const draggable = UiState.draggables.get(id);
 		if (!draggable)
 		{
-			UiState.draggables.set(id, { position: widget.rect.position, previous_position: Base.V2.Zero(), frame: 0 });
+			UiState.draggables.set(id, {
+				position: widget.rect.position,
+				previous_position: Base.V2.Zero(),
+				frame: 0
+			});
 		}
 		else
 		{
-			draggable.frame = UiState.current_frame;
 			widget.rect.position.set(draggable.position);
+			draggable.frame = UiState.current_frame;
 		}
 	}
-	const sz = UiState.sizes.get(id);
-	if (sz)
+	const size = UiState.sizes.get(id);
+	if (size)
 	{
-		widget.rect.width		= sz.width;
-		widget.rect.height	= sz.height;
+		widget.rect.width		= size.width;
+		widget.rect.height	= size.height;
 	}
 	Ui_Push(widget);
 	return (widget);
@@ -293,17 +307,10 @@ function Ui_RectClearPos(widget: Ui_Widget, position: Base.V2)
 		widget.rect.height	+ (widget.border_size_px*2));
 }
 
-function Ui_PointInRect(id: WidgetId): boolean
+function Ui_PointInRect(widget: Ui_Widget): boolean
 {
 	Base.assert(UiState.input !== null, "Ui_State must be initialized");
-	const widget = Ui_FindWidget(id);
-
 	let result = false;
-	if (widget === null)
-	{
-		return (result)
-	}
-
 	if (Base.point_in_rect(UiState.input!.cursor.position, widget.rect))
 	{
 		result = true;
@@ -355,73 +362,100 @@ function Ui_WidgetSetActive(id: WidgetId)
 
 function Ui_WidgetSetHot(id: WidgetId)
 {
-	if (UiState.active === Base.u640)
-	{
-		UiState.hot = id;
-	}
+	UiState.hot = id;
+}
+
+function Ui_WidgetVPadding(padding: [number, number, number, number])
+{
+	return (
+		padding[WidgetPTop] +
+		padding[WidgetPBottom]
+	);
+}
+
+function Ui_WidgetHPadding(padding: [number, number, number, number])
+{
+	return (
+		padding[WidgetPLeft] +
+		padding[WidgetPRight]
+	);
 }
 
 function Ui_WidgetRecalculate(widget: Ui_Widget)
 {
-	widget.actual_width		= widget.rect.width-(Ui_DefaultBorderSize*2)-Ui_DefaultWidgetPaddingPxH2;
-	widget.actual_height	= widget.rect.height-(Ui_DefaultBorderSize*2)-Ui_DefaultWidgetPaddingPxV2;
+	const v_padding = Ui_WidgetVPadding(widget.padding);
+	const h_padding = Ui_WidgetHPadding(widget.padding);
+	widget.actual_height	= widget.rect.height-(widget.border_size_px*2)-v_padding;
+	widget.actual_width		= widget.rect.width- (widget.border_size_px*2)-h_padding;
 }
 
 function Ui_DrawWidget(widget: Ui_Widget)
 {
-	let rect = widget!.rect;
+	let rect = widget.rect;
 
 	let text_offset_x = 0;
 	let text_offset_y = 0;
-	if (Base.has_flag(widget!.flags, UiDrawText))
+	if (Base.has_flag(widget.flags, UiDrawText))
 	{
-		const text_rect = widget!.text_rect!;
+		const text_rect = widget.text_rect!;
 		text_offset_x		= text_rect.position.x;
 		text_offset_y		= text_rect.position.y;
 
-		const aw = widget!.actual_width;
-		const ah = widget!.actual_height;
-		if (text_rect.width > widget!.actual_width || text_rect.height > widget!.actual_height)
+		const aw = widget.actual_width;
+		const ah = widget.actual_height;
+		if (text_rect.width > widget.actual_width || text_rect.height > widget.actual_height)
 		{
-			rect.width	= text_rect.width+Ui_DefaultWidgetPaddingPxH2;
-			rect.height = text_rect.height+Ui_DefaultWidgetPaddingPxV2;
+			rect.width	= text_rect.width +Ui_WidgetHPadding(widget.padding);
+			rect.height = text_rect.height+Ui_WidgetVPadding(widget.padding);
 		}
-		else if (Base.has_flag(widget!.flags, UiTextCentered))
+		else if (Base.has_flag(widget.flags, UiTextCentered))
 		{
 			text_offset_x = Base.round((aw-text_rect.width)/2);
 			text_offset_y = Base.round((ah+text_rect.height)/2);
 		}
-		else if (Base.has_flag(widget!.flags, UiTextCenteredX))
+		else if (Base.has_flag(widget.flags, UiTextCenteredX))
 		{
 			text_offset_x = Base.round((aw-text_rect.width)/2);
 		}
-		else if (Base.has_flag(widget!.flags, UiTextCenteredY))
+		else if (Base.has_flag(widget.flags, UiTextCenteredY))
 		{
 			text_offset_y = Base.round((ah+text_rect.height)/2);
 		}
 	}
 
 	Base.GlobalContext!.clearRect(rect.position.x, rect.position.y, rect.width, rect.height);
-	if (Base.has_flag(widget!.flags, UiDrawBackground))
+	if (Base.has_flag(widget.flags, UiDrawBackground))
 	{
-		let color = widget!.background_color;
+		let color = widget.background_color;
 		if (Ui_WidgetIsHot(widget!.id))
 		{
-			color = widget!.hot_color;
+			color = widget.hot_color;
 		}
-		if (Ui_WidgetIsActive(widget!.id))
+		if (Ui_WidgetIsActive(widget.id))
 		{
-			color = widget!.active_color;
+			color = widget.active_color;
 		}
 		Ui_DrawRect(rect, color);
 	}
-	if (Base.has_flag(widget!.flags, UiDrawText))
+	if (Base.has_flag(widget.flags, UiDrawText))
 	{
-		Ui_DrawText(widget!.str, widget!.text_color,
-			rect.position.x + text_offset_x + Ui_DefaultWidgetPaddingPxH,
-			rect.position.y + text_offset_y + Ui_DefaultWidgetPaddingPxV,
-			widget!.text_size_px,
-			widget!.font,
+		//const text_rect = Base.Rect(
+		//	rect.position.x + text_offset_x + widget.padding[WidgetPLeft],
+		//	rect.position.y + text_offset_y + widget.padding[WidgetPTop],
+		//	rect.width,
+		//	rect.height
+		//) 
+		//
+		//const r_test = widget.text_rect!;
+		//r_test.position.set(text_rect.position);
+		//Ui_DrawRect(r_test, Base.RGBA_FULL_GREEN);
+		//
+		//console.log(text_rect);
+		Ui_DrawText(widget.str, widget.text_color,
+			rect.position.x + text_offset_x + widget.padding[WidgetPLeft],
+			rect.position.y + text_offset_y + widget.padding[WidgetPTop],
+			widget.text_size_px,
+			widget.font,
 		);
 	}
 	if (Base.has_flag(widget!.flags, UiDrawBorder))
@@ -437,6 +471,19 @@ export interface WidgetInteracion
 	widget: Ui_Widget;
 	clicked: boolean;
 	dragging: boolean;
+	hovering: boolean;
+}
+
+export function Ui_Cursor()
+{
+	return (UiState.input!.cursor);
+}
+
+export function Ui_DragDelta()
+{
+	return (Ui_Cursor().position
+					.clone()
+					.sub(UiState.drag_start));
 }
 
 export function Ui_WidgetWithInteraction(widget: Ui_Widget)
@@ -444,92 +491,58 @@ export function Ui_WidgetWithInteraction(widget: Ui_Widget)
 	const interaction: WidgetInteracion = {
 		widget,
 		clicked: false,
-		dragging: false
+		dragging: false,
+		hovering: false
 	}
 
-	if (Base.has_flag(widget.flags, UiClickable) && Base.has_flag(widget.flags, UiDragabble))
-	{
-		console.warn(`UiWidgetWithInteraction(), widgets cannot be draggable and clickable at the same time at the moment. UiDraggable will be ignored`);
-		widget.flags &= ~(UiDragabble);
-	}
+	const mouse_in_rect = Ui_PointInRect(widget);
 
-	if (Base.has_flag(widget.flags, UiClickable))
-	{
-		if (Ui_WidgetIsActive(widget.id))
-		{
-			if (!Ui_MButtonDown())
-			{
-				if (Ui_WidgetIsHot(widget.id))
-				{
-						interaction.clicked = true;
-				}
-				Ui_WidgetSetActive(Base.u640);
-			}
-		}
-		else if (Ui_WidgetIsHot(widget.id))
-		{
-			if (Ui_MButtonDown())
-			{
-				Ui_WidgetSetActive(widget.id);
-			}
-		}
-
-		for (const widget of UiState.stack)
-		{
-			if (Ui_WidgetIsHot(widget.id) && !Ui_PointInRect(widget.id))
-			{
-				Ui_WidgetSetHot(Base.u640);
-			}
-		}
-	}
-
-	if (Base.has_flag(widget.flags, UiDragabble))
-	{
-		if (Ui_WidgetIsHot(widget.id) && !UiState.is_dragging)
-		{
-			if (Ui_MButtonDown())
-			{
-				Ui_WidgetSetActive(widget.id);
-				UiState.is_dragging = true;
-				UiState.draggind_id = widget.id;
-				if (!UiState.drag_offset)
-				{
-					UiState.drag_offset = UiState.input!.cursor.position.clone().sub(widget.rect.position);
-				}
-			}
-		}
-		if (Ui_WidgetIsActive(widget.id) && UiState.is_dragging && UiState.draggind_id === widget.id)
-		{
-			if (!Ui_MButtonDown())
-			{
-				UiState.is_dragging = false;
-				UiState.draggind_id = Base.u640;
-				UiState.drag_offset = null; 
-				Ui_WidgetSetActive(Base.u640);
-			}
-			else
-			{
-				interaction.dragging = true;
-				const new_position = UiState.input!.cursor.position
-					.clone()
-					.sub(UiState.drag_offset!)
-				Ui_SetPosition(widget, new_position); 
-			}
-		}
-
-		for (const [id, _] of [...UiState.draggables.entries()])
-		{
-			if (!UiState.is_dragging && Ui_WidgetIsHot(id) && !Ui_PointInRect(id))
-			{
-				Ui_WidgetSetHot(Base.u640);
-			}
-		}
-
-	}
-	if (Ui_PointInRect(widget.id) && UiState.hot === Base.u640)
+	if (Base.has_flag(widget.flags, UiClickable) &&
+			mouse_in_rect &&
+		 Ui_MButtonDown())
 	{
 		Ui_WidgetSetHot(widget.id);
+		Ui_WidgetSetActive(widget.id);
+
+		if (Base.has_flag(widget.flags, UiDragabble) &&
+				!UiState.is_dragging)
+		{
+			UiState.drag_start.set(
+				Ui_Cursor().position
+				.clone()
+				.sub(widget.rect.position)
+			);
+		}
 	}
+
+	if (Base.has_flag(widget.flags, UiClickable) &&
+			mouse_in_rect &&
+		 !Ui_MButtonDown() &&
+		 Ui_WidgetIsActive(widget.id))
+	{
+		Ui_WidgetSetActive(Base.u640);
+		interaction.clicked = true;
+		UiState.is_dragging = false;
+	}
+
+	if (Base.has_flag(widget.flags, UiClickable) &&
+		 !mouse_in_rect &&
+		 !Ui_MButtonDown() &&
+		 Ui_WidgetIsActive(widget.id))
+	{
+		Ui_WidgetSetActive(Base.u640);
+		Ui_WidgetSetHot(Base.u640);
+	}
+
+	if(Base.has_flag(widget.flags, UiClickable) &&
+		mouse_in_rect &&
+		Ui_WidgetIsActive(Base.u640) || Ui_WidgetIsActive(widget.id))
+	{
+		Ui_WidgetSetHot(widget.id);
+		interaction.hovering = true;
+	}
+
+	interaction.dragging = UiState.is_dragging;
 	return (interaction);
 }
 
@@ -551,6 +564,7 @@ export function Container(text: string, rect: Base.Rect): WidgetInteracion
 															 rect,
 															 UiDrawBackground	|
 															 UiDragabble			|
+															 UiClickable			|
 															 UiDrawText				|
 															 UiTextCentered);
 	return (Ui_WidgetWithInteraction(widget));
@@ -559,6 +573,12 @@ export function Container(text: string, rect: Base.Rect): WidgetInteracion
 export function FrameBegin(dt: number)
 {
 	UiState.dt = dt;
+
+	if (Ui_WidgetIsActive(Base.u640))
+	{
+		Ui_WidgetSetHot(Base.u640);
+	}
+
 	for (const [id, {frame, widget}] of [...UiState.cleanup.entries()])
 	{
 		if (UiState.current_frame - frame > 5)
@@ -571,17 +591,34 @@ export function FrameBegin(dt: number)
 
 export function FrameEnd()
 {
+	if (!Ui_WidgetIsActive(Base.u640))
+	{
+		const widget = Ui_FindWidget(UiState.active);
+		if (widget && Base.has_flag(widget.flags, UiDragabble))
+		{
+			UiState.is_dragging = true;
+
+			const delta = Ui_DragDelta();
+			Ui_SetPosition(widget, delta);
+		}
+	}
+
 	while (UiState.stack.length)
 	{
-		const widget = Ui_PopFront()!;
-		Ui_DrawWidget(widget);
+		Ui_DrawWidget(Ui_PopFront()!);
 	}
 	UiState.current_frame += 1;
 }
 
 export function ParentP(parent: WidgetInteracion)
 {
-	return (parent.widget.rect.position.array());
+	const x = parent.widget.rect.position.x;
+	const y = parent.widget.rect.position.y;
+
+	return ([
+		x + parent.widget.border_size_px + Ui_DefaultWidgetPaddingPxH,
+		y + parent.widget.border_size_px + Ui_DefaultWidgetPaddingPxV
+	]);
 }
 
 export function TextS()
