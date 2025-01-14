@@ -1,87 +1,139 @@
 import * as Base from "./base.js";
 import * as Input from "./input.js";
-const Ui_DefaultWidgetPaddingPxH = 10;
-const Ui_DefaultWidgetPaddingPxV = 10;
+const Ui_DefaultWidgetPaddingPxH = 1;
+const Ui_DefaultWidgetPaddingPxV = 1;
 const Ui_DefaultWidgetPaddingPxH2 = Ui_DefaultWidgetPaddingPxH * 2;
 const Ui_DefaultWidgetPaddingPxV2 = Ui_DefaultWidgetPaddingPxV * 2;
-const Ui_DefaultBorderSize = 1;
+const Ui_DefaultRoundedCornersRadii = 10;
+const Ui_DefaultBorderSize = 2;
 const Ui_DefaultTextSize = 16;
-const Ui_DefaultFont = "serif";
+const Ui_DefaultFont = "Arial";
 const Ui_DefaultBackgroundcolor = Base.RGBA(195, 75, 114);
-const Ui_DefaultActiveBackgroundcolor = Base.RGBA(0, 255, 0);
-const Ui_DefaultHotBackgroundcolor = Base.RGBA(255, 0, 0);
+const Ui_DefaultActiveBackgroundcolor = Base.RGB_Darken(Ui_DefaultBackgroundcolor, 0);
+const Ui_DefaultHotBackgroundcolor = Base.RGB_Lighten(Ui_DefaultBackgroundcolor, 0);
+const Ui_InventorySlotSize = 64;
+const Ui_InventoryColumns = 4;
 const Ui_DefaultBorderColor = Base.RGBA(0, 0, 0);
-const Ui_DefaultTextColor = Base.RGBA(0, 0, 0);
+const Ui_DefaultTextColor = Base.RGBA(255, 255, 255);
+const Ui_InventorySpacing = 1;
+function Ui_DrawRoundedRectagle(rect, radii, px, fill = false, stroke = true) {
+    Base.assert(Base.GlobalContext !== null, "`Ui_DrawRoundedRectagle()` GlobalContext must be initialized");
+    const ctx = Base.GlobalContext;
+    Base.GlobalContext.lineWidth = px;
+    const [r00, r01, r10, r11] = radii;
+    const [x, y] = rect.position.array();
+    const { width, height } = rect;
+    ctx.beginPath();
+    ctx.moveTo(x + r00 + px, y + px);
+    ctx.lineTo(x + width - r01 - px, y + px);
+    ctx.quadraticCurveTo(x + width - px, y + px, x + width - px, y + r01);
+    ctx.lineTo(x + width - px, y + height - r11);
+    ctx.quadraticCurveTo(x + width - px, y + height - px, x + width - r11 - px, y + height - px);
+    ctx.lineTo(x + r10 + px, y + height - px);
+    ctx.quadraticCurveTo(x + px, y + height - px, x + px, y + height - r10);
+    ctx.lineTo(x + px, y + r00);
+    ctx.quadraticCurveTo(x + px, y + px, x + r00 + px, y + px);
+    ctx.closePath();
+    if (stroke) {
+        ctx.stroke();
+    }
+    if (fill) {
+        ctx.fill();
+    }
+}
+function Ui_IsDragabble(widget) {
+    return (Base.has_flag(widget.flags, UiDragabbleX) ||
+        Base.has_flag(widget.flags, UiDragabbleY));
+}
 export function Ui_DrawText(text, color, x, y, font_size_px = Ui_DefaultTextSize, font = Ui_DefaultFont) {
     Base.assert(Base.GlobalContext !== null, "`Ui_DrawText()` GlobalContext must be initialized");
     Base.GlobalContext.fillStyle = Base.RGBA_to_hex_string(color);
     Base.GlobalContext.font = `${font_size_px}px ${font}`;
     Base.GlobalContext.fillText(text, x, y);
 }
-function Ui_DrawRect(rect, color) {
-    Base.assert(Base.GlobalContext !== null, "`Ui_DrawRect()` GlobalContext must be initialized");
+function Ui_WidgetDrawRect(widget) {
+    let color = widget.background_color;
+    if (Ui_WidgetIsHot(widget.id)) {
+        color = widget.hot_color;
+    }
+    if (Ui_WidgetIsActive(widget.id)) {
+        color = widget.active_color;
+    }
     Base.GlobalContext.fillStyle = Base.RGBA_to_css_string(color);
-    Base.GlobalContext.beginPath();
-    Base.GlobalContext.fillRect(rect.position.x, rect.position.y, rect.width, rect.height);
-    Base.GlobalContext.fill();
+    Base.GlobalContext.strokeStyle = Base.RGBA_to_css_string(widget.border_color);
+    const radii = widget.radii;
+    Ui_DrawRoundedRectagle(widget.rect, radii, widget.border_size_px, Base.has_flag(widget.flags, UiDrawBackground), Base.has_flag(widget.flags, UiDrawBorder));
 }
-const UiTextCenteredX = 1 << 0;
-const UiTextCenteredY = 1 << 1;
-const UiTextCentered = UiTextCenteredX | UiTextCenteredY;
-const UiDrawText = 1 << 2;
-const UiDrawBackground = 1 << 3;
-const UiDrawBorder = 1 << 4;
-const UiClickable = 1 << 5;
-const UiDragabble = 1 << 6;
+export const UiTextCenteredX = 1 << 0;
+export const UiTextCenteredY = 1 << 1;
+export const UiTextCentered = UiTextCenteredX | UiTextCenteredY;
+export const UiDrawText = 1 << 2;
+export const UiDrawBackground = 1 << 3;
+export const UiDrawBorder = 1 << 4;
+export const UiClickable = 1 << 5;
+export const UiDrawImage = 1 << 6;
+export const UiImageCenteredX = 1 << 7;
+export const UiImageCenteredY = 1 << 8;
+export const UiDragabbleX = 1 << 9;
+export const UiDragabbleY = 1 << 10;
+export const UiDragabble = UiDragabbleX | UiDragabbleY;
+export const UiImageCentered = UiImageCenteredX | UiImageCenteredY;
 const UiState = {
     input: null,
+    dt: 0,
     active: Base.u640,
     hot: Base.u640,
-    stack: [],
     sizes: new Map(),
     cleanup: new Map(),
     current_frame: 0,
     is_dragging: false,
     drag_start: Base.V2.Zero(),
-    dt: 0,
     draggables: new Map(),
+    stack: [],
+    padding_stack: [],
+    active_color_stack: [],
+    hot_color_stack: [],
+    bg_color_stack: [],
+    rounded_corner_radii_stack: [],
+    border_px_stack: [],
+    border_color_stack: [],
+    text_color_stack: [],
+    text_offset_stack: [],
+    font_stack: []
 };
 export function SetInputInstance(input) {
     UiState.input = input;
 }
 function Ui_Push(wid) {
-    let push = true;
-    for (let i = 0; i < UiState.stack.length; i++) {
-        if (UiState.stack[i].id == wid.id) {
-            push = false;
-        }
-    }
-    if (push) {
-        UiState.stack.push(wid);
-    }
+    Base.very_stupid_array_push_back(wid, UiState.stack);
 }
 function Ui_PopFront() {
     const widget = UiState.stack.shift();
     if (widget) {
         UiState.cleanup.set(widget.id, { frame: UiState.current_frame, widget });
-        Ui_RectClear(widget);
     }
     return (widget);
 }
-function Ui_PopBack() {
-    return UiState.stack.pop();
-}
 function Ui_SetPosition(widget, delta) {
-    if (!Base.has_flag(widget.flags, UiDragabble)) {
+    if (!Ui_IsDragabble(widget)) {
         console.warn("position of non draggables elements are not persistant");
         return;
     }
     const draggable = UiState.draggables.get(widget.id);
-    Ui_RectClearPos(widget, draggable.previous_position);
-    draggable.previous_position.set(widget.rect.position);
-    draggable.position.set(delta);
+    if (draggable) {
+        Ui_RectClearPos(widget, draggable.previous_position);
+        draggable.previous_position.set(widget.rect.position);
+        draggable.position.set(delta);
+    }
+    else {
+        UiState.draggables.set(widget.id, {
+            previous_position: widget.rect.position,
+            position: delta,
+            frame: UiState.current_frame
+        });
+    }
 }
-function Ui_SetSize(widget, width, height) {
+export function Ui_SetSize(widget, width, height) {
     UiState.sizes.set(widget.id, {
         width,
         height
@@ -90,12 +142,16 @@ function Ui_SetSize(widget, width, height) {
 export function Rect(a, b) {
     const [x, y] = a;
     const [width, height] = b;
-    return (Base.Rect(x, y, width + Ui_DefaultWidgetPaddingPxH2, height + Ui_DefaultWidgetPaddingPxV2));
+    return (Base.Rect(x, y, width + Ui_DefaultWidgetPaddingPxH, height + Ui_DefaultWidgetPaddingPxV));
 }
 export const WidgetPTop = 0;
 export const WidgetPLeft = 1;
 export const WidgetPBottom = 2;
 export const WidgetPRight = 3;
+export const WidgetBorderRadiusTL = 0;
+export const WidgetBorderRadiusTR = 1;
+export const WidgetBorderRadiusBL = 2;
+export const WidgetBorderRadiusBR = 3;
 function Ui_Widget_new(text, rect, flags) {
     const id = Base.hash_string(text);
     const from_stack = Ui_FindWidget(id);
@@ -108,12 +164,20 @@ function Ui_Widget_new(text, rect, flags) {
     }
     const widget = {
         id,
+        image_data: null,
         rect,
+        text_offset: Base.V2.Zero(),
         padding: [
             Ui_DefaultWidgetPaddingPxV,
             Ui_DefaultWidgetPaddingPxH,
             Ui_DefaultWidgetPaddingPxV,
             Ui_DefaultWidgetPaddingPxH
+        ],
+        radii: [
+            Ui_DefaultRoundedCornersRadii,
+            Ui_DefaultRoundedCornersRadii,
+            Ui_DefaultRoundedCornersRadii,
+            Ui_DefaultRoundedCornersRadii
         ],
         str: text,
         flags: flags,
@@ -129,16 +193,9 @@ function Ui_Widget_new(text, rect, flags) {
         actual_height: rect.height - (Ui_DefaultBorderSize * 2) - Ui_DefaultWidgetPaddingPxV2,
         border_size_px: Ui_DefaultBorderSize
     };
-    if (Base.has_flag(flags, UiDragabble)) {
+    if (Ui_IsDragabble(widget)) {
         const draggable = UiState.draggables.get(id);
-        if (!draggable) {
-            UiState.draggables.set(id, {
-                position: widget.rect.position,
-                previous_position: Base.V2.Zero(),
-                frame: 0
-            });
-        }
-        else {
+        if (draggable) {
             widget.rect.position.set(draggable.position);
             draggable.frame = UiState.current_frame;
         }
@@ -157,13 +214,9 @@ function Ui_RectFromText(text, font_size_px = Ui_DefaultTextSize, font = Ui_Defa
     const metrics = Base.GlobalContext.measureText(text);
     const w = metrics.actualBoundingBoxRight +
         metrics.actualBoundingBoxLeft;
-    //Ui_DefaultWidgetPaddingPxH2;
     const h = metrics.actualBoundingBoxAscent +
         metrics.actualBoundingBoxDescent;
-    //Ui_DefaultWidgetPaddingPxV2;
-    return Base.Rect(metrics.actualBoundingBoxLeft, //	+ Ui_DefaultWidgetPaddingPxH,
-    metrics.actualBoundingBoxAscent, //+ Ui_DefaultWidgetPaddingPxV,
-    Base.round(w), Base.round(h));
+    return Base.Rect(metrics.actualBoundingBoxLeft, metrics.actualBoundingBoxAscent, Base.round(w), Base.round(h));
 }
 function Ui_FindWidget(id) {
     let widget = null;
@@ -184,7 +237,13 @@ function Ui_RectClearPos(widget, position) {
     Base.assert(Base.GlobalContext !== null, "`Ui_RectClear()` GlobalContext must be initialized");
     const x = position.x - widget.border_size_px;
     const y = position.y - widget.border_size_px;
-    Base.GlobalContext.clearRect(x, y, widget.rect.width + (widget.border_size_px * 2), widget.rect.height + (widget.border_size_px * 2));
+    const sz = UiState.sizes.get(widget.id);
+    if (sz) {
+        Base.GlobalContext.clearRect(x, y, sz.width + (widget.border_size_px * 2), sz.height + (widget.border_size_px * 2));
+    }
+    else {
+        Base.GlobalContext.clearRect(x, y, widget.rect.width + (widget.border_size_px * 2), widget.rect.height + (widget.border_size_px * 2));
+    }
 }
 function Ui_PointInRect(widget) {
     Base.assert(UiState.input !== null, "Ui_State must be initialized");
@@ -200,25 +259,6 @@ function Ui_MButtonDown() {
 }
 function Ui_WidgetIsActive(id) {
     return (id === UiState.active);
-}
-function Ui_DrawBorders(widget) {
-    Base.assert(Base.GlobalContext !== null, "`Ui_DrawText()` GlobalContext must be initialized");
-    const px = widget.border_size_px;
-    const hpx = Base.round(px / 2);
-    Base.GlobalContext.strokeStyle = Base.RGBA_to_css_string(widget.border_color);
-    Base.GlobalContext.lineWidth = px;
-    Base.GlobalContext.beginPath();
-    let x = widget.rect.position.x;
-    let y = widget.rect.position.y;
-    Base.GlobalContext.moveTo(x - hpx, y);
-    Base.GlobalContext.lineTo(x + widget.rect.width + hpx, y);
-    Base.GlobalContext.moveTo(x + widget.rect.width, y);
-    Base.GlobalContext.lineTo(x + widget.rect.width, y + widget.rect.height + hpx);
-    Base.GlobalContext.moveTo(x + widget.rect.width, y + widget.rect.height);
-    Base.GlobalContext.lineTo(x - hpx, y + widget.rect.height);
-    Base.GlobalContext.moveTo(x, y + widget.rect.height);
-    Base.GlobalContext.lineTo(x, y);
-    Base.GlobalContext.stroke();
 }
 function Ui_WidgetIsHot(id) {
     return (id === UiState.hot);
@@ -237,65 +277,66 @@ function Ui_WidgetHPadding(padding) {
     return (padding[WidgetPLeft] +
         padding[WidgetPRight]);
 }
+function Ui_WidgetP(v, widget) {
+    return (widget.padding[v]);
+}
 function Ui_WidgetRecalculate(widget) {
     const v_padding = Ui_WidgetVPadding(widget.padding);
     const h_padding = Ui_WidgetHPadding(widget.padding);
     widget.actual_height = widget.rect.height - (widget.border_size_px * 2) - v_padding;
     widget.actual_width = widget.rect.width - (widget.border_size_px * 2) - h_padding;
 }
+function Ui_IsContentCenteredFlagSet(flags) {
+    return (Base.has_flag(flags, UiTextCentered) ||
+        Base.has_flag(flags, UiImageCentered));
+}
 function Ui_DrawWidget(widget) {
     let rect = widget.rect;
-    let text_offset_x = 0;
-    let text_offset_y = 0;
-    if (Base.has_flag(widget.flags, UiDrawText)) {
-        const text_rect = widget.text_rect;
-        text_offset_x = text_rect.position.x;
-        text_offset_y = text_rect.position.y;
-        const aw = widget.actual_width;
-        const ah = widget.actual_height;
-        if (text_rect.width > widget.actual_width || text_rect.height > widget.actual_height) {
-            rect.width = text_rect.width + Ui_WidgetHPadding(widget.padding);
-            rect.height = text_rect.height + Ui_WidgetVPadding(widget.padding);
+    let content_offset_x = 0;
+    let content_offset_y = 0;
+    if (Base.has_flag(widget.flags, UiDrawText) ||
+        Base.has_flag(widget.flags, UiDrawImage)) {
+        //rnoba: this will work for now
+        let content_rect = widget.text_rect;
+        if (Base.has_flag(widget.flags, UiDrawImage)) {
+            content_rect = Base.Rect(0, 0, widget.image_data.width, widget.image_data.height);
         }
-        else if (Base.has_flag(widget.flags, UiTextCentered)) {
-            text_offset_x = Base.round((aw - text_rect.width) / 2);
-            text_offset_y = Base.round((ah + text_rect.height) / 2);
+        content_offset_x = content_rect.position.x;
+        content_offset_y = content_rect.position.y;
+        let aw = widget.rect.width;
+        let ah = widget.rect.height;
+        if (Base.has_flag(widget.flags, UiDrawText)) {
+            aw = widget.actual_width;
+            ah = widget.actual_height;
+        }
+        if (content_rect.width > widget.actual_width || content_rect.height > widget.actual_height) {
+            rect.width = content_rect.width + Ui_WidgetP(WidgetPRight, widget);
+            rect.height = content_rect.height + Ui_WidgetP(WidgetPBottom, widget);
+        }
+        else if (Ui_IsContentCenteredFlagSet(widget.flags)) {
+            content_offset_x = Base.round((aw - content_rect.width) / 2);
+            content_offset_y = Base.round((ah - content_rect.height) / 2);
+            if (Base.has_flag(widget.flags, UiDrawText)) {
+                content_offset_y = Base.round((ah + content_rect.height) / 2);
+            }
         }
         else if (Base.has_flag(widget.flags, UiTextCenteredX)) {
-            text_offset_x = Base.round((aw - text_rect.width) / 2);
+            content_offset_x = Base.round((aw - content_rect.width) / 2);
         }
         else if (Base.has_flag(widget.flags, UiTextCenteredY)) {
-            text_offset_y = Base.round((ah + text_rect.height) / 2);
+            content_offset_y = Base.round((ah - content_rect.height) / 2);
+            if (Base.has_flag(widget.flags, UiDrawText)) {
+                content_offset_y = Base.round((ah + content_rect.height) / 2);
+            }
         }
     }
-    Base.GlobalContext.clearRect(rect.position.x, rect.position.y, rect.width, rect.height);
-    if (Base.has_flag(widget.flags, UiDrawBackground)) {
-        let color = widget.background_color;
-        if (Ui_WidgetIsHot(widget.id)) {
-            color = widget.hot_color;
-        }
-        if (Ui_WidgetIsActive(widget.id)) {
-            color = widget.active_color;
-        }
-        Ui_DrawRect(rect, color);
-    }
+    Ui_WidgetDrawRect(widget);
     if (Base.has_flag(widget.flags, UiDrawText)) {
-        //const text_rect = Base.Rect(
-        //	rect.position.x + text_offset_x + widget.padding[WidgetPLeft],
-        //	rect.position.y + text_offset_y + widget.padding[WidgetPTop],
-        //	rect.width,
-        //	rect.height
-        //) 
-        //
-        //const r_test = widget.text_rect!;
-        //r_test.position.set(text_rect.position);
-        //Ui_DrawRect(r_test, Base.RGBA_FULL_GREEN);
-        //
-        //console.log(text_rect);
-        Ui_DrawText(widget.str, widget.text_color, rect.position.x + text_offset_x + widget.padding[WidgetPLeft], rect.position.y + text_offset_y + widget.padding[WidgetPTop], widget.text_size_px, widget.font);
+        Ui_DrawText(widget.str, widget.text_color, rect.position.x + content_offset_x + widget.padding[WidgetPLeft] + widget.text_offset.x, rect.position.y + content_offset_y + widget.padding[WidgetPTop] + widget.text_offset.y, widget.text_size_px, widget.font);
     }
-    if (Base.has_flag(widget.flags, UiDrawBorder)) {
-        Ui_DrawBorders(widget);
+    if (Base.has_flag(widget.flags, UiDrawImage)) {
+        const image_data = widget.image_data;
+        Base.GlobalContext.drawImage(image_data, rect.position.x + content_offset_x, rect.position.y + content_offset_y);
     }
     Ui_WidgetRecalculate(widget);
     Ui_SetSize(widget, rect.width, rect.height);
@@ -321,7 +362,7 @@ export function Ui_WidgetWithInteraction(widget) {
         Ui_MButtonDown()) {
         Ui_WidgetSetHot(widget.id);
         Ui_WidgetSetActive(widget.id);
-        if (Base.has_flag(widget.flags, UiDragabble) &&
+        if (Ui_IsDragabble(widget) &&
             !UiState.is_dragging) {
             UiState.drag_start.set(Ui_Cursor().position
                 .clone()
@@ -345,28 +386,52 @@ export function Ui_WidgetWithInteraction(widget) {
     }
     if (Base.has_flag(widget.flags, UiClickable) &&
         mouse_in_rect &&
-        Ui_WidgetIsActive(Base.u640) || Ui_WidgetIsActive(widget.id)) {
+        (Ui_WidgetIsActive(Base.u640) || Ui_WidgetIsActive(widget.id))) {
         Ui_WidgetSetHot(widget.id);
         interaction.hovering = true;
     }
     interaction.dragging = UiState.is_dragging;
+    Ui_GetStackValues(widget);
     return (interaction);
 }
-export function Button(text, rect) {
+export function Button(text, rect, flags = 0) {
     const widget = Ui_Widget_new(text, rect, UiDrawBorder |
         UiTextCentered |
         UiDrawText |
         UiClickable |
-        UiDrawBackground);
+        UiDrawBackground | flags);
     return (Ui_WidgetWithInteraction(widget));
 }
-export function Container(text, rect) {
+export function Container(text, rect, flags = 0) {
     const widget = Ui_Widget_new(text, rect, UiDrawBackground |
-        UiDragabble |
-        UiClickable |
-        UiDrawText |
-        UiTextCentered);
+        UiDrawBorder | flags);
     return (Ui_WidgetWithInteraction(widget));
+}
+export function ImageContainer(text, rect, image, flags = 0) {
+    const widget = Ui_Widget_new(text, rect, UiDrawImage | flags);
+    widget.image_data = image;
+    return (Ui_WidgetWithInteraction(widget));
+}
+export function CleanWidgetWithInteraction(text, rect, flags) {
+    const widget = Ui_Widget_new(text, rect, flags);
+    return (Ui_WidgetWithInteraction(widget));
+}
+export function Draggable(text, rect, flags = 0) {
+    const widget = Ui_Widget_new(text, rect, UiDrawBackground |
+        UiDrawBorder |
+        UiDragabble |
+        UiClickable | flags);
+    return (Ui_WidgetWithInteraction(widget));
+}
+export function ScrollBar(text, rect, flags = 0) {
+    const container = Container(text + "#" + "container", rect, UiDrawBackground | UiDrawBorder);
+    const dragabble = Container(text + "#" + "dragabble", Rect(container.widget.rect.position.array(), [30, 30]), UiClickable |
+        UiDrawBorder |
+        UiDragabbleY);
+    //
+    //if (dragabble.dragging)
+    //{
+    //}
 }
 export function FrameBegin(dt) {
     UiState.dt = dt;
@@ -383,9 +448,16 @@ export function FrameBegin(dt) {
 export function FrameEnd() {
     if (!Ui_WidgetIsActive(Base.u640)) {
         const widget = Ui_FindWidget(UiState.active);
-        if (widget && Base.has_flag(widget.flags, UiDragabble)) {
+        if (widget &&
+            Ui_IsDragabble(widget)) {
             UiState.is_dragging = true;
             const delta = Ui_DragDelta();
+            if (!Base.has_flag(widget.flags, UiDragabbleX)) {
+                delta.x = widget.rect.position.x;
+            }
+            else if (!Base.has_flag(widget.flags, UiDragabbleY)) {
+                delta.y = widget.rect.position.y;
+            }
             Ui_SetPosition(widget, delta);
         }
     }
@@ -394,14 +466,198 @@ export function FrameEnd() {
     }
     UiState.current_frame += 1;
 }
-export function ParentP(parent) {
+export function PositionFromInteraction(parent) {
     const x = parent.widget.rect.position.x;
     const y = parent.widget.rect.position.y;
     return ([
-        x + parent.widget.border_size_px + Ui_DefaultWidgetPaddingPxH,
-        y + parent.widget.border_size_px + Ui_DefaultWidgetPaddingPxV
+        x + parent.widget.border_size_px + parent.widget.padding[WidgetPLeft],
+        y + parent.widget.border_size_px + parent.widget.padding[WidgetPTop]
     ]);
 }
-export function TextS() {
-    return ([0, 0]);
+export function AbsolutePositionFromInteraction(interaction) {
+    const x = interaction.widget.rect.position.x;
+    const y = interaction.widget.rect.position.y;
+    return ([
+        x,
+        y
+    ]);
+}
+export function SizeFromInteraction(interaction) {
+    const w = interaction.widget.rect.width - Ui_WidgetHPadding(interaction.widget.padding);
+    const h = interaction.widget.rect.height - Ui_WidgetVPadding(interaction.widget.padding);
+    return ([w, h]);
+}
+export function PushBackgroundColor(color) {
+    Base.very_stupid_array_push_front(color, UiState.bg_color_stack);
+}
+export function PushRoundedCorners(tl, tr, bl, br) {
+    const radii = [tl, tr, bl, br];
+    Base.very_stupid_array_push_front(radii, UiState.rounded_corner_radii_stack);
+}
+export function PushPadding(top, bottom, left, right) {
+    const padding = [top, left, bottom, right];
+    Base.very_stupid_array_push_front(padding, UiState.padding_stack);
+}
+export function PushBorderPx(px) {
+    Base.very_stupid_array_push_front(px, UiState.border_px_stack);
+}
+export function PushActiveBackgroundColor(color) {
+    Base.very_stupid_array_push_front(color, UiState.active_color_stack);
+}
+export function PushFont(font, size = Ui_DefaultTextSize) {
+    Base.very_stupid_array_push_front([font, size], UiState.font_stack);
+}
+export function PushHotBackgroundColor(color) {
+    Base.very_stupid_array_push_front(color, UiState.hot_color_stack);
+}
+export function PushBorderColor(color) {
+    Base.very_stupid_array_push_front(color, UiState.border_color_stack);
+}
+export function PushTextColor(color) {
+    Base.very_stupid_array_push_front(color, UiState.text_color_stack);
+}
+export function PushTextOffset(offset) {
+    Base.very_stupid_array_push_front(offset, UiState.text_offset_stack);
+}
+export function PopBackgroundColor() {
+    return UiState.bg_color_stack.shift();
+}
+export function PopRoundedCorners() {
+    return UiState.rounded_corner_radii_stack.shift();
+}
+export function PopBorderPx() {
+    return UiState.border_px_stack.shift();
+}
+export function PopBorderColor() {
+    return UiState.border_color_stack.shift();
+}
+export function PopPadding() {
+    return UiState.padding_stack.shift();
+}
+export function PopFont() {
+    return UiState.font_stack.shift();
+}
+export function PopActiveBackgroundColor() {
+    return UiState.active_color_stack.shift();
+}
+export function PopHotBackgroundColor() {
+    return UiState.hot_color_stack.shift();
+}
+export function PopTextColor() {
+    return UiState.text_color_stack.shift();
+}
+export function PopTextOffset() {
+    return UiState.text_offset_stack.shift();
+}
+export function PushGeneralBackgroundColor(color) {
+    PushBackgroundColor(color);
+    PushActiveBackgroundColor(color);
+    PushHotBackgroundColor(color);
+}
+export function PopGeneralBackgroundColor() {
+    PopBackgroundColor();
+    PopActiveBackgroundColor();
+    PopHotBackgroundColor();
+}
+function Ui_PopStacks() {
+    PopBackgroundColor();
+    PopRoundedCorners();
+    PopBorderPx();
+    PopActiveBackgroundColor();
+    PopHotBackgroundColor();
+    PopPadding();
+    PopBorderColor();
+    PopTextColor();
+    PopFont();
+    PopTextOffset();
+}
+function Ui_GetStackValues(widget) {
+    widget.background_color = UiState.bg_color_stack[0] || widget.background_color;
+    widget.active_color = UiState.active_color_stack[0] || widget.active_color;
+    widget.hot_color = UiState.hot_color_stack[0] || widget.hot_color;
+    widget.radii = UiState.rounded_corner_radii_stack[0] || widget.radii;
+    widget.border_size_px = UiState.border_px_stack[0] || widget.border_size_px;
+    widget.padding = UiState.padding_stack[0] || widget.padding;
+    widget.border_color = UiState.border_color_stack[0] || widget.border_color;
+    widget.text_color = UiState.text_color_stack[0] || widget.text_color;
+    widget.text_offset = UiState.text_offset_stack[0] || widget.text_offset;
+    if (UiState.font_stack[0]) {
+        widget.font = UiState.font_stack[0][0];
+        widget.text_size_px = UiState.font_stack[0][1];
+    }
+    if (UiState.border_px_stack[0] === 0) {
+        widget.flags &= ~(UiDrawBorder);
+    }
+}
+export function DrawInventory(sprites) {
+    let close = false;
+    PushRoundedCorners(5, 5, 5, 5);
+    PushBorderPx(3);
+    PushGeneralBackgroundColor(Base.RGBA(217, 237, 236));
+    PushBorderColor(Base.RGBA(177, 177, 177));
+    PushTextColor(Base.RGBA(75, 78, 94, 0.8));
+    PushFont("GamesStudios", 20);
+    //PushPadding(0, 0, 0, 0);
+    PushTextOffset(Base.V2.New(0, 20));
+    const draggable = Draggable("INVENTORY", Rect([10, 10], [500, 350]), UiDrawText | UiTextCenteredX);
+    const draggable_absolute_position = AbsolutePositionFromInteraction(draggable);
+    const draggable_size = SizeFromInteraction(draggable);
+    PopTextOffset();
+    //PopPadding();
+    PopFont();
+    PopTextColor();
+    PopBorderColor();
+    PopGeneralBackgroundColor();
+    PopBorderPx();
+    PopRoundedCorners();
+    const close_button_position = [
+        draggable_absolute_position[0] + draggable_size[0] - 10 - Ui_WidgetP(WidgetPLeft, draggable.widget),
+        draggable_absolute_position[1] + Ui_WidgetP(WidgetPTop, draggable.widget),
+    ];
+    PushBorderColor(Base.RGBA(177, 177, 177));
+    PushTextColor(Base.RGBA(177, 177, 177));
+    PushTextOffset(Base.V2.New(-10, 10));
+    if (CleanWidgetWithInteraction("X", Rect(close_button_position, [10, 10]), UiDrawText |
+        UiClickable |
+        UiTextCentered).clicked) {
+        close = true;
+    }
+    PopTextOffset();
+    PopTextColor();
+    PopBorderColor();
+    PushGeneralBackgroundColor(Base.RGBA(241, 241, 241));
+    PushBorderPx(1);
+    PushBorderColor(Base.RGBA(177, 177, 177));
+    const offset_y = 50;
+    const container_position = [
+        draggable_absolute_position[0] + Ui_WidgetP(WidgetPLeft, draggable.widget),
+        draggable_absolute_position[1] + offset_y + Ui_WidgetP(WidgetPTop, draggable.widget)
+    ];
+    const inventory_area = Container("container", Rect(container_position, [
+        draggable_size[0] - Ui_WidgetP(WidgetPRight, draggable.widget),
+        draggable_size[1] - offset_y - Ui_WidgetP(WidgetPBottom, draggable.widget)
+    ]), UiClickable);
+    PopBorderColor();
+    PopBorderPx();
+    PopGeneralBackgroundColor();
+    const inventory_area_position = PositionFromInteraction(inventory_area);
+    let y = 0;
+    for (let x = 0; x < 10; x += 1) {
+        const nx = inventory_area_position[0] + Base.floor(x % Ui_InventoryColumns) * Ui_InventorySlotSize * Ui_InventorySpacing;
+        const ny = inventory_area_position[1] + Base.floor(x / Ui_InventoryColumns) * Ui_InventorySlotSize * Ui_InventorySpacing;
+        PushRoundedCorners(3, 3, 3, 3);
+        PushGeneralBackgroundColor(Base.RGBA(204, 204, 204));
+        if (ImageContainer("image :)" + x, Rect([nx, ny], [
+            Ui_InventorySlotSize,
+            Ui_InventorySlotSize
+        ]), sprites[x], UiClickable | UiDrawBackground | UiImageCentered).clicked) {
+            console.log(x);
+        }
+        PopGeneralBackgroundColor();
+        PushRoundedCorners(3, 3, 3, 3);
+    }
+    ScrollBar("Scroll", Rect([container_position[0] + Ui_InventoryColumns * Ui_InventorySlotSize,
+        container_position[1]], [50,
+        100]));
+    return (close);
 }

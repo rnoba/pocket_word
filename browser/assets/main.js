@@ -1,3 +1,4 @@
+import * as Sprite from "./sprite.js";
 import * as Base from "./base.js";
 import * as Input from "./input.js";
 import * as Ui from "./ui.js";
@@ -15,7 +16,8 @@ import * as Ui from "./ui.js";
     const { width, height } = document.body.getBoundingClientRect();
     canvas.width = width;
     canvas.height = height;
-    let current_frame = 0;
+    await Base.load_fonts();
+    const sprites = await Sprite.load();
     //const camera: Base.Camera = {
     //	width,
     //	height,
@@ -32,19 +34,7 @@ import * as Ui from "./ui.js";
     function draw(dt) {
         ipt.pool();
         Ui.FrameBegin(dt);
-        if (Ui.Button("button dsaoiudjasidj", Ui.Rect([300, 300], [100, 40])).clicked) {
-            console.log("clicked");
-        }
-        //const parent = Ui.Container("container", Ui.Rect([0, 0], [300, 600]));
-        //
-        //const parent_position = Ui.ParentP(parent);
-        //for (let i = 0; i < 5; i++)
-        //{
-        //	if (Ui.Button("button " + i, Ui.Rect([parent_position[0], parent_position[1] + i * 65], [100, 40])).clicked)
-        //	{
-        //		console.log("clicked " + i);
-        //	}
-        //}
+        Ui.DrawInventory(sprites);
         Ui.FrameEnd();
     }
     let prev_timestamp = 0;

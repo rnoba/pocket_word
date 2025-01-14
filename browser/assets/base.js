@@ -105,7 +105,6 @@ export class V2 {
         return [this.x, this.y];
     }
 }
-export const V2Zero = V2.Zero();
 export function RGBA(r, g, b, a = 1.0) {
     const r_norm = Clamp(r, 0, 255);
     const g_norm = Clamp(g, 0, 255);
@@ -181,6 +180,22 @@ export function Rect(x, y, w, h) {
         height: h
     };
 }
+export function RGB_Darken(color, amt) {
+    const out = RGBA(0, 0, 0, 1);
+    amt = Clamp(amt, 0, 1);
+    out.r = color.r * (1.0 - amt);
+    out.g = color.g * (1.0 - amt);
+    out.b = color.b * (1.0 - amt);
+    return (out);
+}
+export function RGB_Lighten(color, amt) {
+    const out = RGBA(0, 0, 0, 1);
+    amt = Clamp(amt, 0, 1);
+    out.r = color.r * (1.0 + amt) & 0xFF;
+    out.g = color.g * (1.0 + amt) & 0xFF;
+    out.b = color.b * (1.0 + amt) & 0xFF;
+    return (out);
+}
 export function assert(p, msg = "") {
     if (!p) {
         throw new Error(`assertion failed ${msg}`);
@@ -213,4 +228,44 @@ export function hash_string(str, seed = 0) {
 }
 export function has_flag(value, flag) {
     return (value & flag) === flag;
+}
+export function very_stupid_array_push_front(item, array) {
+    let push = true;
+    for (let i = 0; i < array.length; i++) {
+        if (array[i] === item) {
+            push = false;
+        }
+    }
+    if (push) {
+        array.unshift(item);
+    }
+}
+export function very_stupid_array_push_back(item, array) {
+    let push = true;
+    for (let i = 0; i < array.length; i++) {
+        if (array[i] === item) {
+            push = false;
+        }
+    }
+    if (push) {
+        array.push(item);
+    }
+}
+export async function load_fonts() {
+    const fonts = [
+        { family: "PixelGameExtrude", file: "./Pixel_Game_Extrude.otf" },
+        { family: "PixelGame", file: "./Pixel_Game.otf" },
+        { family: "Gameday", file: "./gameday_regular.otf" },
+        { family: "GamesStudios", file: "./games_studios_regular.otf" },
+    ];
+    for (const { family, file } of fonts) {
+        const font_face = new FontFace(family, `url(${file})`);
+        try {
+            const _font = await font_face.load();
+            document.fonts.add(_font);
+        }
+        catch (err) {
+            console.warn("could not load font: ", family, file);
+        }
+    }
 }

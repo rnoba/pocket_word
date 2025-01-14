@@ -110,8 +110,6 @@ export class V2 {
 	}
 }
 
-export const V2Zero = V2.Zero();
-
 export type RGBA = {
 	r: number;
 	g: number;
@@ -248,6 +246,28 @@ export function Rect(x: number, y: number, w: number, h: number): Rect
 	}
 }
 
+export function RGB_Darken(color: RGBA, amt: number)
+{
+	const out = RGBA(0, 0, 0, 1);
+	amt = Clamp(amt, 0, 1);
+
+	out.r = color.r * (1.0 - amt);
+	out.g = color.g * (1.0 - amt);
+	out.b = color.b * (1.0 - amt);
+	return (out);
+}
+
+export function RGB_Lighten(color: RGBA, amt: number)
+{
+	const out = RGBA(0, 0, 0, 1);
+	amt = Clamp(amt, 0, 1);
+
+	out.r = color.r * (1.0 + amt) & 0xFF;
+	out.g = color.g * (1.0 + amt) & 0xFF;
+	out.b = color.b * (1.0 + amt) & 0xFF;
+	return (out);
+}
+
 export function assert(p: boolean, msg: string = "")
 {
 	if (!p)
@@ -296,3 +316,61 @@ export function has_flag(value: number, flag: number): boolean {
     return (value & flag) === flag;
 }
 
+export function very_stupid_array_push_front<T>(item: T, array: Array<T>)
+{
+	let push = true;
+	for (let i = 0; i < array.length; i++)
+	{
+		if (array[i] === item)
+		{
+			push = false;
+		}
+	}
+
+	if (push)
+	{
+		array.unshift(item);
+	}
+}
+
+export function very_stupid_array_push_back<T>(item: T, array: Array<T>)
+{
+	let push = true;
+	for (let i = 0; i < array.length; i++)
+	{
+		if (array[i] === item)
+		{
+			push = false;
+		}
+	}
+
+	if (push)
+	{
+		array.push(item);
+	}
+}
+
+export async function load_fonts()
+{
+	const fonts = [
+		{ family: "PixelGameExtrude", file: "./Pixel_Game_Extrude.otf" },
+		{ family: "PixelGame", file: "./Pixel_Game.otf" },
+		{ family: "Gameday", file: "./gameday_regular.otf" },
+		{ family: "GamesStudios", file: "./games_studios_regular.otf" },
+	];
+
+	for (const {family, file} of fonts)
+		{
+			const font_face = new FontFace(family, `url(${file})`);
+			try
+			{
+				const _font = await font_face.load();
+				document.fonts.add(_font);
+			}
+			catch (err)
+			{
+				console.warn("could not load font: ", family, file);
+			}
+		}
+
+}
