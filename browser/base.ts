@@ -278,7 +278,7 @@ export function assert(p: boolean, msg: string = "")
 
 export function floor(n: number)
 {
-	return (n >>> 0);
+	return (n >> 0);
 }
 
 export function round(n: number)
@@ -373,4 +373,8 @@ export async function load_fonts()
 			}
 		}
 
+}
+export function Fixed(float: number, places: number)
+{
+	return (Number((round(float*(10*places))/(10*places)).toFixed(places)))
 }

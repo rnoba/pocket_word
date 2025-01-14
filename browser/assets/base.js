@@ -202,7 +202,7 @@ export function assert(p, msg = "") {
     }
 }
 export function floor(n) {
-    return (n >>> 0);
+    return (n >> 0);
 }
 export function round(n) {
     return (floor(n + 0.5));
@@ -268,4 +268,7 @@ export async function load_fonts() {
             console.warn("could not load font: ", family, file);
         }
     }
+}
+export function Fixed(float, places) {
+    return (Number((round(float * (10 * places)) / (10 * places)).toFixed(places)));
 }
