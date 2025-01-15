@@ -11,8 +11,8 @@ const Ui_DefaultFont = "Arial";
 const Ui_DefaultBackgroundcolor = Base.RGBA(195, 75, 114);
 const Ui_DefaultActiveBackgroundcolor = Base.RGB_Darken(Ui_DefaultBackgroundcolor, 0);
 const Ui_DefaultHotBackgroundcolor = Base.RGB_Lighten(Ui_DefaultBackgroundcolor, 0);
-const Ui_InventorySlotSize = 56;
-const Ui_InventoryColumns = 4;
+const Ui_InventorySlotSize = 52;
+const Ui_InventoryColumns = 5;
 const Ui_DefaultBorderColor = Base.RGBA(0, 0, 0);
 const Ui_DefaultTextColor = Base.RGBA(255, 255, 255);
 const Ui_InventorySpacingX = 1.1;
@@ -116,7 +116,7 @@ function Ui_PopFront() {
     }
     return (widget);
 }
-function Ui_SetPosition(widget, delta) {
+function Ui_SetPosition(widget, delta, reset_drag_start = true) {
     if (!Ui_IsDragabble(widget)) {
         console.warn("position of non draggables elements are not persistant");
         return;
@@ -135,7 +135,9 @@ function Ui_SetPosition(widget, delta) {
             frame: UiState.current_frame
         });
     }
-    UiState.drag_start.set(UiState.input.cursor.position);
+    if (reset_drag_start) {
+        UiState.drag_start.set(UiState.input.cursor.position);
+    }
 }
 export function Ui_SetSize(widget, width, height) {
     UiState.sizes.set(widget.id, {
@@ -300,6 +302,7 @@ function Ui_DrawWidget(widget) {
     let rect = widget.rect;
     let content_offset_x = 0;
     let content_offset_y = 0;
+    let would_resize = false;
     if (Base.has_flag(widget.flags, UiDrawText) ||
         Base.has_flag(widget.flags, UiDrawImage)) {
         //rnoba: this will work for now
@@ -311,18 +314,15 @@ function Ui_DrawWidget(widget) {
         content_offset_y = content_rect.position.y;
         let aw = rect.width;
         let ah = rect.height;
-        let would_resize = false;
         if (Base.has_flag(widget.flags, UiDrawText)) {
             aw = widget.actual_width;
             ah = widget.actual_height;
         }
-        if (content_rect.width > widget.actual_width ||
-            content_rect.height > widget.actual_height) {
-            would_resize = true;
-            if (!Base.has_flag(widget.flags, UiDontResize)) {
-                rect.width = content_rect.width + Ui_WidgetP(WidgetPRight, widget);
-                rect.height = content_rect.height + Ui_WidgetP(WidgetPBottom, widget);
-            }
+        if (!Base.has_flag(widget.flags, UiDontResize) &&
+            (content_rect.width > widget.actual_width ||
+                content_rect.height > widget.actual_height)) {
+            rect.width = content_rect.width + Ui_WidgetP(WidgetPRight, widget);
+            rect.height = content_rect.height + Ui_WidgetP(WidgetPBottom, widget);
         }
         else if (Ui_IsContentCenteredFlagSet(widget.flags)) {
             content_offset_x = Base.round((aw - content_rect.width) / 2);
@@ -340,6 +340,10 @@ function Ui_DrawWidget(widget) {
                 content_offset_y = Base.round((ah + content_rect.height) / 2);
             }
         }
+        if (content_rect.width > widget.actual_width ||
+            content_rect.height > widget.actual_height) {
+            would_resize = true;
+        }
     }
     Ui_WidgetDrawRect(widget);
     if (Base.has_flag(widget.flags, UiDrawText)) {
@@ -347,12 +351,12 @@ function Ui_DrawWidget(widget) {
     }
     if (Base.has_flag(widget.flags, UiDrawImage)) {
         const image_data = widget.image_data;
-        Base.GlobalContext.drawImage(image_data, 0, content_offset_y, 
+        Base.GlobalContext.drawImage(image_data, 0, would_resize ? content_offset_y : 0, 
         // TODO(Rnoba): fix this
         rect.width - content_offset_x, rect.height - content_offset_y, rect.position.x + content_offset_x, rect.position.y + content_offset_y, rect.width - Ui_WidgetP(WidgetPLeft, widget) - content_offset_x, rect.height - Ui_WidgetP(WidgetPBottom, widget) - content_offset_y);
     }
     Ui_WidgetRecalculate(widget);
-    Ui_SetSize(widget, rect.width, rect.height);
+    //Ui_SetSize(widget!, rect.width, rect.height);
 }
 export function Ui_Cursor() {
     return (UiState.input.cursor);
@@ -432,33 +436,42 @@ export function Draggable(text, rect, flags = 0) {
         UiClickable | flags);
     return (Ui_WidgetWithInteraction(widget));
 }
-export function ScrollBar(text, rect, pixels, flags = 0) {
-    const container = CleanWidgetWithInteraction(text + "#" + "container", rect, UiDrawBorder | UiClickable);
+export function ScrollBar(text, rect, pixels, flags = 0, parent_id) {
+    PushBorderPx(1);
+    const container = CleanWidgetWithInteraction(text + "#" + "container", rect, UiDrawBorder | UiDrawBackground | UiClickable);
+    PopBorderPx();
     const pct = Base.Clamp(rect.height / pixels, 0, 1);
     const size = rect.height * pct;
     const draggable_pos = container.widget.rect.position.array();
-    draggable_pos[0] += 2.5;
-    const dragabble = Container(text + "#" + "dragabble", Rect(draggable_pos, [15, size]), UiClickable |
+    draggable_pos[0] += (rect.width - (rect.width / 2)) / 2 - (container.widget.border_size_px);
+    PushGeneralBackgroundColor(Base.RGBA(0, 0, 0, 0));
+    PushBorderPx(1);
+    const dragabble = Container(text + "#" + "dragabble", Rect(draggable_pos, [rect.width / 2, size]), UiClickable |
         UiDrawBorder |
         (pct < 1 ? UiDragabbleY : 0));
+    PopBorderPx();
+    PopGeneralBackgroundColor();
+    if (pct >= 1) {
+        return (0);
+    }
     const dragabble_start_point_y = rect.position.y + rect.height;
     const dragabble_current_position_y = dragabble.widget.rect.position.y;
-    let current = Base.floor(dragabble_current_position_y + size);
-    let remainig_pct = current / dragabble_start_point_y;
+    const current = Base.floor(dragabble_current_position_y + size);
     const total_amt = dragabble_start_point_y - Base.floor(rect.position.y + size);
     const current_amt = Base.floor(dragabble_start_point_y - current);
-    if (remainig_pct <= 1 && UiState.is_dragging && Ui_WidgetIsActive(dragabble.widget.id)) {
+    if (UiState.is_dragging && Ui_WidgetIsActive(dragabble.widget.id)) {
         const delta = Ui_DragDelta();
-        const delta_y = delta.y * UiState.dt * 30;
-        const next_y = dragabble_current_position_y + delta_y;
-        current = Base.floor(size + next_y);
-        remainig_pct = current / dragabble_start_point_y;
-        if (remainig_pct <= 1 && next_y >= rect.position.y) {
-            Ui_SetPosition(dragabble.widget, Base.V2.New(0, delta_y));
-        }
+        const delta_y = delta.y * UiState.dt * 50;
+        const next_y = dragabble_current_position_y + Base.round(delta_y);
+        //TODO9(rnoba): fix dragging
+        Ui_SetPosition(dragabble.widget, Base.V2.New(0, delta_y));
+    }
+    if (UiState.is_dragging && Ui_WidgetIsActive(parent_id)) {
+        const delta = Ui_DragDelta();
+        Ui_SetPosition(dragabble.widget, Base.V2.New(delta.x, delta.y), false);
     }
     const progress = (total_amt - current_amt) / total_amt;
-    return (progress < 0.005 ? 0 : progress);
+    return (progress);
 }
 export function FrameBegin(dt) {
     UiState.dt = dt;
@@ -472,6 +485,7 @@ export function FrameBegin(dt) {
             UiState.cleanup.delete(id);
         }
     }
+    Ui_PopStacks();
 }
 export function FrameEnd() {
     if (!Ui_WidgetIsActive(Base.u640)) {
@@ -612,16 +626,19 @@ function Ui_GetStackValues(widget) {
         widget.flags &= ~(UiDrawBorder);
     }
 }
+const inventory_state = {
+    selected_item: 0
+};
 export function DrawInventory(sprites) {
     let close = false;
     PushRoundedCorners(5, 5, 5, 5);
     PushBorderPx(3);
-    PushGeneralBackgroundColor(Base.RGBA(217, 237, 236));
+    PushGeneralBackgroundColor(Base.RGBA(217, 237, 236, 1));
     PushBorderColor(Base.RGBA(177, 177, 177));
     PushTextColor(Base.RGBA(75, 78, 94, 0.8));
-    PushFont("GamesStudios", 20);
-    PushTextOffset(Base.V2.New(0, 20));
-    const draggable = Draggable("INVENTORY", Rect([10, 10], [500, 350]), UiDrawText | UiTextCenteredX);
+    PushFont("GamesStudios", 18);
+    PushTextOffset(Base.V2.New(0, 5));
+    const draggable = Draggable("INVENTORY", Rect([10, 10], [500, 300]));
     const draggable_absolute_position = AbsolutePositionFromInteraction(draggable);
     const draggable_size = SizeFromInteraction(draggable);
     PopTextOffset();
@@ -637,8 +654,8 @@ export function DrawInventory(sprites) {
     ];
     PushBorderColor(Base.RGBA(177, 177, 177));
     PushTextColor(Base.RGBA(177, 177, 177));
-    PushTextOffset(Base.V2.New(-10, 10));
-    if (CleanWidgetWithInteraction("X", Rect(close_button_position, [10, 10]), UiDrawText |
+    PushTextOffset(Base.V2.New(-2, 0));
+    if (CleanWidgetWithInteraction("x", Rect(close_button_position, [10, 10]), UiDrawText |
         UiClickable |
         UiTextCentered).clicked) {
         close = true;
@@ -646,17 +663,18 @@ export function DrawInventory(sprites) {
     PopTextOffset();
     PopTextColor();
     PopBorderColor();
-    PushGeneralBackgroundColor(Base.RGBA(241, 241, 241));
+    PushGeneralBackgroundColor(Base.RGBA(255, 255, 255, 1));
     PushBorderPx(1);
     PushBorderColor(Base.RGBA(177, 177, 177));
-    const offset_y = 50;
+    const offset_y = 20;
     const inventory_area_height = draggable_size[1] - offset_y - Ui_WidgetP(WidgetPBottom, draggable.widget);
+    const inventory_area_width = draggable_size[0] - Ui_WidgetP(WidgetPRight, draggable.widget);
     const container_position = [
         draggable_absolute_position[0] + Ui_WidgetP(WidgetPLeft, draggable.widget),
         draggable_absolute_position[1] + offset_y + Ui_WidgetP(WidgetPTop, draggable.widget)
     ];
     const inventory_area = Container("container", Rect(container_position, [
-        draggable_size[0] - Ui_WidgetP(WidgetPRight, draggable.widget),
+        inventory_area_width,
         inventory_area_height
     ]), UiClickable);
     PopBorderColor();
@@ -664,19 +682,23 @@ export function DrawInventory(sprites) {
     PopGeneralBackgroundColor();
     const inventory_slots = 100;
     const scroll_bar_height = Base.floor(inventory_slots / Ui_InventoryColumns) * Ui_InventorySlotSize * Ui_InventorySpacingY;
+    const scrollbar_height = inventory_area_height - inventory_area.widget.border_size_px * 2 - 2;
+    const scrollbar_width = 20;
+    PushRoundedCorners(3, 3, 3, 3);
     const offset = ScrollBar("Scroll", Rect([
-        container_position[0] + Ui_InventorySlotSize * 4 * Ui_InventorySpacingX + 5,
+        container_position[0] + Ui_InventorySlotSize * Ui_InventoryColumns * Ui_InventorySpacingX + 5,
         container_position[1] + inventory_area.widget.border_size_px * 2 + Ui_WidgetP(WidgetPTop, inventory_area.widget)
     ], [
-        20,
-        inventory_area_height - inventory_area.widget.border_size_px * 2 - 2
-    ]), scroll_bar_height);
+        scrollbar_width,
+        scrollbar_height
+    ]), scroll_bar_height, 0, draggable.widget.id);
+    PopRoundedCorners();
     const content_offset = -(offset) * (scroll_bar_height - inventory_area_height);
     const inventory_area_position = PositionFromInteraction(inventory_area);
     let x = 0;
     for (x = 0; x < inventory_slots; x += 1) {
         const nx = inventory_area_position[0] + Base.floor(x % Ui_InventoryColumns) * Ui_InventorySlotSize * Ui_InventorySpacingX;
-        const ny = inventory_area_position[1] + Base.floor(x / Ui_InventoryColumns) * Ui_InventorySlotSize * Ui_InventorySpacingY + content_offset;
+        let ny = inventory_area_position[1] + Base.floor(x / Ui_InventoryColumns) * Ui_InventorySlotSize * Ui_InventorySpacingY + content_offset;
         let height = Ui_InventorySlotSize;
         if (ny + Ui_InventorySlotSize < inventory_area_position[1] || ny > inventory_area_position[1] + inventory_area_height) {
             continue;
@@ -684,18 +706,66 @@ export function DrawInventory(sprites) {
         if (ny + Ui_InventorySlotSize > inventory_area_position[1] + inventory_area_height) {
             const cut_amt = (ny + Ui_InventorySlotSize) - (inventory_area_position[1] + inventory_area_height);
             height -= Base.round(cut_amt) + 5;
-            console.log(height, Base.floor(x / Ui_InventoryColumns));
+        }
+        if (ny < inventory_area_position[1]) {
+            const cut_amt = inventory_area_position[1] - (ny);
+            height -= Base.round(cut_amt);
+            ny += cut_amt;
+        }
+        if (height <= 0) {
+            continue;
         }
         PushRoundedCorners(3, 3, 3, 3);
-        PushGeneralBackgroundColor(Base.RGBA(204, 204, 204));
+        let background_color = Base.RGBA(222, 222, 222);
+        if (x === inventory_state.selected_item) {
+            background_color = Base.RGB_Lighten(background_color, 0.9);
+        }
+        PushGeneralBackgroundColor(background_color);
+        PushHotBackgroundColor(Base.RGB_Darken(background_color, 0.2));
+        PushBorderPx(2);
         if (ImageContainer("image :)" + x, Rect([nx, ny], [
             Ui_InventorySlotSize,
             height
-        ]), sprites[x % 4], UiClickable | UiDrawBackground | UiImageCentered | UiDontResize).clicked) {
-            console.log(x);
+        ]), sprites[x], UiClickable | UiDrawBackground | UiImageCentered | UiDontResize | UiDrawBorder).clicked) {
+            inventory_state.selected_item = x;
         }
+        PopBorderPx();
+        PopHotBackgroundColor();
         PopGeneralBackgroundColor();
-        PushRoundedCorners(3, 3, 3, 3);
+        PopRoundedCorners();
+    }
+    PushGeneralBackgroundColor(Base.RGBA(0, 0, 0, 0));
+    PushBorderPx(0);
+    const start_right_side = container_position[0] +
+        Ui_InventorySlotSize *
+            Ui_InventoryColumns *
+            Ui_InventorySpacingX + 10;
+    const left_side_width = start_right_side - container_position[0] + scrollbar_width + 5;
+    const width = inventory_area_width - left_side_width;
+    const height = inventory_area_height - 5;
+    const inv_left_area = Container("container##left", Rect([
+        start_right_side + scrollbar_width,
+        container_position[1] +
+            inventory_area.widget.border_size_px * 2 +
+            Ui_WidgetP(WidgetPTop, inventory_area.widget)
+    ], [
+        width,
+        height
+    ]), UiDrawBorder);
+    const position = AbsolutePositionFromInteraction(inv_left_area);
+    PopBorderPx();
+    PopGeneralBackgroundColor();
+    if (inventory_state.selected_item != -1) {
+        ImageContainer("selected item", Rect([position[0], position[1]], [width, height / 2]), sprites[inventory_state.selected_item], UiDrawBackground | UiImageCentered);
+        PushGeneralBackgroundColor(Base.RGBA(0, 0, 0, 0));
+        PushTextColor(Base.RGBA(0, 0, 0, 0.8));
+        PushBorderPx(1);
+        if (Button("Place", Rect([position[0], position[1] + height - 20 - 10], [100, 20])).clicked) {
+            console.log("place", inventory_state.selected_item);
+        }
+        PopBorderPx();
+        PopTextColor();
+        PopGeneralBackgroundColor();
     }
     return (close);
 }
