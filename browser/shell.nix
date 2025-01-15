@@ -9,6 +9,7 @@ pkgs.mkShell {
   nativeBuildInputs = with pkgs; [
 		nodejs
 		typescript
+		prettierd
 		nodePackages_latest.typescript-language-server
   ];
 }

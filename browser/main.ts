@@ -37,7 +37,11 @@ import * as Ui			from "./ui.js";
 	{
 		ipt.pool();
 		Ui.FrameBegin(dt);
-		Ui.DrawInventory(sprites);
+		if (Ui.InventoryIsOpen())
+		{
+			Ui.DrawInventory(sprites[0] as ImageBitmap[])
+		}
+		Ui.DrawSpriteLoader(sprites[1] as ImageBitmap);
 		Ui.FrameEnd();
 	}
 

@@ -34,7 +34,10 @@ import * as Ui from "./ui.js";
     function draw(dt) {
         ipt.pool();
         Ui.FrameBegin(dt);
-        Ui.DrawInventory(sprites);
+        if (Ui.InventoryIsOpen()) {
+            Ui.DrawInventory(sprites[0]);
+        }
+        Ui.DrawSpriteLoader(sprites[1]);
         Ui.FrameEnd();
     }
     let prev_timestamp = 0;
