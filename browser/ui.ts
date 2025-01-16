@@ -148,13 +148,18 @@ export const UiDragabbleX				= 1 << 9;
 export const UiDragabbleY				= 1 << 10;
 export const UiDragabble				= UiDragabbleX|UiDragabbleY; 
 export const UiFitContent				= 1 << 11;
+
 export const UiScroll						= 1 << 12;
+
 export const UiScrollViewX			= 1 << 13; 
 export const UiScrollViewY			= 1 << 14; 
-export const UiScrollView				= UiScrollViewX|UiScrollViewY; 
-export const UiViewClampX			  = 1 << 15; 
-export const UiViewClampY			  = 1 << 16; 
-export const UiViewClamp			  = UiViewClampX|UiViewClampY; 
+export const UiScrollView				= 1 << 15;
+
+export const UiViewClampX			  = 1 << 16; 
+export const UiViewClampY			  = 1 << 17; 
+export const UiViewClamp			  = 1 << 18; 
+
+export const UiPersistSize			= 1 << 19;
 
 interface Ui_Draggable
 {
@@ -374,13 +379,15 @@ function Ui_Widget_new(
 			draggable.frame = UiState.current_frame;
 		}
 	}
-	// TODO(rnoba): find a better way of doing this
-	//const size = UiState.sizes.get(id);
-	//if (size)
-	//{
-	//	widget.rect.width		= size.width;
-	//	widget.rect.height	= size.height;
-	//}
+	if (Base.has_flag(widget.flags, UiPersistSize))
+	{
+		const size = UiState.sizes.get(id);
+		if (size)
+		{
+			widget.rect.width		= size.width;
+			widget.rect.height	= size.height;
+		}
+	}
 	const view_offset = UiState.view_offsets.get(id);
 	if (view_offset)
 	{
@@ -564,8 +571,8 @@ function Ui_DrawWidget(widget: Ui_Widget)
 			 )
 		{
 			// resize box to fit content
-			rect.width	= content_rect.width;//	+ Ui_WidgetP(WidgetPRight, widget);
-			rect.height = content_rect.height;//+ Ui_WidgetP(WidgetPBottom, widget);
+			rect.width	= content_rect.width;
+			rect.height = content_rect.height;
 		}
 
 		else if (Ui_IsContentCenteredFlagSet(widget.flags))
@@ -634,14 +641,15 @@ function Ui_DrawWidget(widget: Ui_Widget)
 		{
 			Base.GlobalContext!.drawImage(
 				image_data,
-				content_offset_x,
-				content_offset_y,
-				rect.width,
-				rect.height,
+				widget.image_rect.position.x,
+				widget.image_rect.position.y,
+				would_resize ? rect.width		: widget.image_rect.width,
+				would_resize ? rect.height	: widget.image_rect.height,
 				rect.position.x + content_offset_x,
 				rect.position.y + content_offset_y,
-				rect.width,
-				rect.height);
+				rect.width	- (would_resize ? 0 : content_offset_x*2),
+				rect.height - (would_resize ? 0 : content_offset_y*2)
+			);
 		}
 		else
 		{
@@ -989,6 +997,7 @@ export function FrameBegin(dt: number)
 	Ui_PopStacks();
 }
 
+// TODO(rnoba): code cleanup
 export function FrameEnd()
 {
 	if (!Ui_WidgetIsActive(Base.u640))
@@ -1012,6 +1021,13 @@ export function FrameEnd()
 		if (Base.has_flag(widget.flags, UiScrollView))
 		{
 			UiState.view_offsets.set(widget.id, widget.view_offset);
+		}
+		if (Base.has_flag(widget.flags, UiPersistSize))
+		{
+			UiState.sizes.set(widget.id, {
+				width: widget.rect.width,
+				height: widget.rect.height,
+			});
 		}
 		Ui_DrawWidget(widget);
 	}
@@ -1434,8 +1450,9 @@ interface SpriteLoaderState
 {
 	selected_sprite: number;
 }
+
 const sprite_loader_state: SpriteLoaderState = {
-	selected_sprite: 0
+	selected_sprite: 0,
 }
 
 export function DrawSpriteLoader(source_image: ImageBitmap)
@@ -1445,7 +1462,7 @@ export function DrawSpriteLoader(source_image: ImageBitmap)
 	PushGeneralBackgroundColor(Base.RGBA(0, 0, 0, 0.1));
 	Base.GlobalContext!.clearRect(0, 0, 1440, 900);
 	const image_container = Container("sprite-loader-container", Rect([30, 30], [800, 600]),
-																				 UiScrollView|UiViewClampX|UiViewClampY|UiDrawBorder|UiDrawBackground,
+																				 UiScrollView|UiScrollViewY|UiScrollViewX|UiViewClamp|UiViewClampX|UiViewClampY|UiDrawBorder|UiDrawBackground,
 																				 source_image.width,
 																				 source_image.height);
 	const image_container_visible_size = SizeFromInteraction(image_container);
@@ -1493,17 +1510,27 @@ export function DrawSpriteLoader(source_image: ImageBitmap)
 	const loaded_container_x = image_container_visible_size[0] + 30 + 30;
 	const loaded_container_y = 30;
 	const loaded_container = Container("loaded-container",
-																		 Rect([loaded_container_x, loaded_container_y], [506, 600]), UiDrawBorder)
+																		 Rect(
+																			 [
+																				 loaded_container_x,
+																				 loaded_container_y
+																			 ],
+																			 [
+																				 506,
+																				 600
+																			 ]),
+																			 UiDrawBorder|UiScrollViewY|UiScrollView|UiViewClamp|UiViewClampY,
+																			 null, (from_source.length / 6 * SpriteLoaderSlotSize * Ui_InventorySpacingY) + 2 * from_source.length/6);
 
 	const loaded_container_pos	= PositionFromInteraction(loaded_container);
 	const loaded_container_size	= SizeFromInteraction(loaded_container);
-	const loaded_container_col	= Base.floor(loaded_container_size[0] / SpriteLoaderSlotSize) - 1;
-
+	const loaded_container_col	= Base.floor(loaded_container_size[0] / SpriteLoaderSlotSize);
 	PushBorderPx(1);
+	PushRoundedCorners(0, 0, 0, 0);
 	for (let x = 0; x < from_source.length; x++)
 	{
 		const nx = loaded_container_pos[0] + Base.floor(x % loaded_container_col) * SpriteLoaderSlotSize * Ui_InventorySpacingX + (Base.round(SpriteLoaderSlotSize/4));
-		const ny = loaded_container_pos[1] + Base.floor(x / loaded_container_col) * SpriteLoaderSlotSize * Ui_InventorySpacingY;
+		const ny = loaded_container_pos[1] + Base.floor(x / loaded_container_col) * SpriteLoaderSlotSize * Ui_InventorySpacingY - loaded_container.widget.view_offset.y;
 		const sprite = from_source[x];
 		if (ImageContainer("loaded-slot" + x,
 			Rect([nx, ny], [
@@ -1517,26 +1544,52 @@ export function DrawSpriteLoader(source_image: ImageBitmap)
 			sprite_loader_state.selected_sprite = x;
 		}
 	}
+	PopRoundedCorners();
 	PopBorderPx();
 
 	const selected_sprite = from_source[sprite_loader_state.selected_sprite];
-	PushRoundedCorners(0, 0, 0, 0);
-	PushGeneralBackgroundColor(Base.RGBA(255, 255, 255, 0.4))
-	PushBorderPx(1);
-	PushTextColor(Base.RGBA_FULL_BLUE);
-	Container(`selected-sprite-overlay#${selected_sprite.rect.width}-${selected_sprite.rect.height}`,
-		Rect(
-			[
-				image_container_abs_position[0] + selected_sprite.rect.position.x,
-				image_container_abs_position[1] + selected_sprite.rect.position.y
-			], 
-			[
-				selected_sprite.rect.width,
-				selected_sprite.rect.height
-			]
-		), UiDrawBorder|UiDrawText|UiTextCentered)
-	PopTextColor();
-	PopBorderPx();
-	PopGeneralBackgroundColor()
-	PopRoundedCorners();
+	const selected_sprite_offset_x = image_container_position[0] + selected_sprite.rect.position.x - image_container.widget.view_offset.x;
+	const selected_sprite_offset_y = image_container_position[1] + selected_sprite.rect.position.y - image_container.widget.view_offset.y;
+
+	if ((selected_sprite_offset_x + selected_sprite.rect.width) > image_container_visible_size[0])
+	{
+		image_container.widget.view_offset.x += 1000 * UiState.dt;
+	}
+	else if ((image_container_position[0] + selected_sprite.rect.position.x - selected_sprite.rect.width/2) < image_container.widget.view_offset.x)
+	{
+		image_container.widget.view_offset.x -= 1000 * UiState.dt;
+	}
+
+	if ((selected_sprite_offset_y + selected_sprite.rect.height) > image_container_visible_size[1])
+	{
+		image_container.widget.view_offset.y += 1000 * UiState.dt;
+	}
+	else if ((image_container_position[1] + selected_sprite.rect.position.y - selected_sprite.rect.height/2) < image_container.widget.view_offset.y)
+	{
+		image_container.widget.view_offset.y -= 1000 * UiState.dt;
+	}
+
+	if (selected_sprite_offset_x < image_container_visible_size[0] &&
+			selected_sprite_offset_y < image_container_visible_size[1])
+	{
+		PushRoundedCorners(0, 0, 0, 0);
+		PushGeneralBackgroundColor(Base.RGBA(255, 255, 255, 0.4))
+		PushBorderPx(1);
+		PushTextColor(Base.RGBA_FULL_BLUE);
+		Container(`selected-sprite-overlay#${selected_sprite.rect.width}-${selected_sprite.rect.height}`,
+			Rect(
+				[
+					selected_sprite_offset_x,
+					selected_sprite_offset_y
+				], 
+				[
+					selected_sprite.rect.width,
+					selected_sprite.rect.height
+				]
+			), UiDrawBorder|UiDrawText|UiTextCentered)
+		PopTextColor();
+		PopBorderPx();
+		PopGeneralBackgroundColor()
+		PopRoundedCorners();
+	}
 }

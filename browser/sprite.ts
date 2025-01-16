@@ -82,12 +82,13 @@ async function collect_sprites(size: number, image: HTMLImageElement): Promise<A
 
 export async function load()
 {
-	//const image_test	= await load_image("./test.png");
+	const image_test	= await load_image("./test.png");
 	const image		= await load_image("./sprites.png");
 	const sprites = await collect_sprites(Base.TW, image);
 
 	const scale_x = 800/image.width;
 	const scale_y = 600/image.height;
+	const source_bitmap_original_test = await createImageBitmap(image_test, 0, 0, image_test.width, image_test.height);
 	const source_bitmap_original = await createImageBitmap(image, 0, 0, image.width, image.height);
 	return [sprites, source_bitmap_original];
 }
