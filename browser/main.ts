@@ -36,11 +36,15 @@ import * as Ui			from "./ui.js";
 	function draw(dt: number)
 	{
 		ipt.pool();
+
+		//TODO(rnoba); remove this
+		ctx!.clearRect(0, 0, 1440, 900);
+
 		Ui.FrameBegin(dt);
-		if (Ui.InventoryIsOpen())
-		{
-			Ui.DrawInventory(sprites[0] as ImageBitmap[])
-		}
+		//if (Ui.InventoryIsOpen())
+		//{
+		//Ui.DrawInventory(sprites[0] as ImageBitmap[])
+		//}
 		Ui.DrawSpriteLoader(sprites[1] as ImageBitmap);
 		Ui.FrameEnd();
 	}

@@ -33,10 +33,13 @@ import * as Ui from "./ui.js";
     Ui.SetInputInstance(ipt);
     function draw(dt) {
         ipt.pool();
+        //TODO(rnoba); remove this
+        ctx.clearRect(0, 0, 1440, 900);
         Ui.FrameBegin(dt);
-        if (Ui.InventoryIsOpen()) {
-            Ui.DrawInventory(sprites[0]);
-        }
+        //if (Ui.InventoryIsOpen())
+        //{
+        //Ui.DrawInventory(sprites[0] as ImageBitmap[])
+        //}
         Ui.DrawSpriteLoader(sprites[1]);
         Ui.FrameEnd();
     }

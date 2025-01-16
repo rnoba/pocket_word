@@ -178,6 +178,7 @@ function dettach_listeners()
 
 export interface InputInstance {
 	pool: () => void;
+	consume_event: () => void;
 	next_event: () => null | mEvent[number]
 	cursor: Cursor;
 	is_down: (btn: Btn) => boolean;
@@ -324,12 +325,16 @@ export function init(): InputInstance
 		},
 		next_event: function()
 		{
-			return free_evt.shift() || null;
+			return free_evt[0];
+		},
+		consume_event: function()
+		{
+			free_evt.shift();
 		},
 		pool: function(): void {
 			while (event_queue.length)
 			{
-				free_evt.shift();
+				//free_evt.shift();
 				const evt = event_queue.shift()!;
 				free_evt.unshift(evt);
 				switch (evt[0])

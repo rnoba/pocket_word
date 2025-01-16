@@ -294,11 +294,14 @@ export function init() {
             return (r);
         },
         next_event: function () {
-            return free_evt.shift() || null;
+            return free_evt[0];
+        },
+        consume_event: function () {
+            free_evt.shift();
         },
         pool: function () {
             while (event_queue.length) {
-                free_evt.shift();
+                //free_evt.shift();
                 const evt = event_queue.shift();
                 free_evt.unshift(evt);
                 switch (evt[0]) {

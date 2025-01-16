@@ -378,3 +378,5 @@ export function Fixed(float: number, places: number)
 {
 	return (Number((round(float*(10*places))/(10*places)).toFixed(places)))
 }
+
+export type Pair<T, U = T> = [T, U];

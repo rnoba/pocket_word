@@ -40,22 +40,24 @@ async function collect_sprites(size, image) {
     const promises = [];
     for (let y = 0; y < count_y; y += 1) {
         for (let x = 0; x < count_x; x += 1) {
-            const original = await createImageBitmap(image, x * size, y * size, size, size);
-            const promise = create_scaled_bitmap(original, size * 0.7, size * 0.7);
-            promises.push(promise);
+            const original = createImageBitmap(image, x * size, y * size, size, size);
+            //const promise		= create_scaled_bitmap(original, size * 0.7, size * 0.7);
+            promises.push(original);
         }
     }
     return (await Promise.all(promises));
 }
 export async function load() {
     const image_test = await load_image("./test.png");
+    const image_test_2 = await load_image("./test_2.png");
     const image = await load_image("./sprites.png");
     const sprites = await collect_sprites(Base.TW, image);
     const scale_x = 800 / image.width;
     const scale_y = 600 / image.height;
     const source_bitmap_original_test = await createImageBitmap(image_test, 0, 0, image_test.width, image_test.height);
+    const source_bitmap_original_test_2 = await createImageBitmap(image_test_2, 0, 0, image_test_2.width, image_test_2.height);
     const source_bitmap_original = await createImageBitmap(image, 0, 0, image.width, image.height);
-    return [sprites, source_bitmap_original];
+    return [sprites, source_bitmap_original_test];
 }
 export function draw_from_image(ctx, src, sprite, camera, x, y, z) {
     const offset_x = sprite.offset_x - (Base.TW / 2);
