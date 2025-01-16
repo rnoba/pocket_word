@@ -43,9 +43,9 @@ import * as Ui			from "./ui.js";
 		Ui.FrameBegin(dt);
 		//if (Ui.InventoryIsOpen())
 		//{
-		//Ui.DrawInventory(sprites[0] as ImageBitmap[])
 		//}
 		Ui.DrawSpriteLoader(sprites[1] as ImageBitmap);
+		//Ui.DrawInventory(sprites[0] as ImageBitmap[])
 		Ui.FrameEnd();
 	}
 

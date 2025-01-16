@@ -114,7 +114,7 @@ export enum KKey {
 
 const KEYBOARD_STATE_MAP: Map<number, boolean> = new Map();
 
-type Btn = number;
+export type Key = number;
 
 type Cursor = {
 	position: Base.V2,
@@ -181,7 +181,7 @@ export interface InputInstance {
 	consume_event: () => void;
 	next_event: () => null | mEvent[number]
 	cursor: Cursor;
-	is_down: (btn: Btn) => boolean;
+	is_down: (btn: Key) => boolean;
 	deinit: () => void;
 }
 
@@ -197,7 +197,7 @@ export function init(): InputInstance
 	return {
 		cursor,
 		deinit: dettach_listeners,
-		is_down: function(btn: Btn): boolean {
+		is_down: function(btn: Key): boolean {
 			let r = false;
 			switch (btn)
 			{

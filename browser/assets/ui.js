@@ -50,6 +50,9 @@ export function Ui_DrawText(text, color, x, y, font_size_px = Ui_DefaultTextSize
     Base.GlobalContext.fillText(text, x, y);
 }
 function Ui_WidgetDrawRect(widget) {
+    //if (widget.rect.width  <= 0 ||
+    //		widget.rect.height <= 0) { return; }
+    //
     let color = widget.background_color;
     if (Ui_IsHot(widget.id)) {
         color = widget.hot_color;
@@ -100,10 +103,6 @@ const UiState = {
     current_frame: 0,
     delta_time: 0,
     input_instance: null,
-    //view_offsets: new Map(),
-    //sizes: new Map(),
-    //cleanup: new Map(),
-    //draggables: new Map(),
     rounded_corner_radii_stack: [],
     active_color_stack: [],
     border_color_stack: [],
@@ -113,7 +112,8 @@ const UiState = {
     hot_color_stack: [],
     bg_color_stack: [],
     padding_stack: [],
-    font_stack: []
+    font_stack: [],
+    key_press_history: new Map(),
 };
 export function SetInputInstance(input) {
     UiState.input_instance = input;
@@ -158,9 +158,11 @@ function Ui_Widget_new(text, rect, flags, view_width = null, view_height = null)
         from_stack.border_and_padding_increment.height = Ui_WidgetVPadding(from_stack.padding) + from_stack.border_size_px * 2;
         from_stack.border_and_padding_increment.position.x = from_stack.padding[WidgetPLeft] + from_stack.border_size_px;
         from_stack.border_and_padding_increment.position.y = from_stack.padding[WidgetPTop] + from_stack.border_size_px;
+        from_stack.str = text;
         from_stack.flags = flags;
         from_stack.view_width = view_width;
         from_stack.view_height = view_height;
+        from_stack.last_rendered_frame = UiState.current_frame;
         return (from_stack);
     }
     let text_rect = null;
@@ -171,6 +173,7 @@ function Ui_Widget_new(text, rect, flags, view_width = null, view_height = null)
         id,
         // string used to generate id and display text if flag is set
         str: text,
+        selection: Base.V2.Zero(),
         flags: flags,
         // position and fixed size of rectagle
         rect,
@@ -215,7 +218,8 @@ function Ui_Widget_new(text, rect, flags, view_width = null, view_height = null)
         initial_width: rect.width,
         initial_height: rect.height,
         initial_x: rect.position.x,
-        initial_y: rect.position.y
+        initial_y: rect.position.y,
+        last_rendered_frame: UiState.current_frame,
     };
     Ui_Push(widget);
     return (widget);
@@ -283,6 +287,7 @@ function Ui_WidgetHPadding(padding) {
     return (padding[WidgetPLeft] +
         padding[WidgetPRight]);
 }
+// TODO(rnoba): refactor this
 function Ui_DrawWidget(widget) {
     let draw_rect = widget.rect;
     if (draw_rect.width <
@@ -295,6 +300,8 @@ function Ui_DrawWidget(widget) {
     }
     let offset_x = 0;
     let offset_y = 0;
+    let scale_x = 1;
+    let scale_y = 1;
     if (Base.has_flag(widget.flags, UiDrawText)) {
         const text_rect = Ui_RectFromText(widget.str, widget.font_size, widget.font);
         offset_x = text_rect.position.x + widget.border_and_padding_increment.position.x;
@@ -318,8 +325,6 @@ function Ui_DrawWidget(widget) {
             }
         }
     }
-    let scale_x = 1;
-    let scale_y = 1;
     if (Base.has_flag(widget.flags, UiDrawImage)) {
         offset_x = widget.border_and_padding_increment.position.x;
         offset_y = widget.border_and_padding_increment.position.y;
@@ -361,10 +366,10 @@ function Ui_DrawWidget(widget) {
                 offset_y += Math.floor((draw_rect.height - rect_height) / 2) - widget.border_and_padding_increment.position.y;
             }
         }
-        if (Base.has_flag(widget.flags, UiScaleImageToBox)) {
-            offset_x = 0;
-            offset_y = 0;
-        }
+    }
+    if (Base.has_flag(widget.flags, UiScaleImageToBox)) {
+        offset_x = 0;
+        offset_y = 0;
     }
     Ui_WidgetDrawRect(widget);
     if (Base.has_flag(widget.flags, UiDrawText)) {
@@ -374,7 +379,7 @@ function Ui_DrawWidget(widget) {
         const image_bitmap = widget.image_data;
         const image_rect = widget.image_rect;
         if (image_rect) {
-            Base.GlobalContext.drawImage(image_bitmap, image_rect.position.x, image_rect.position.y, image_rect.width, image_rect.height, draw_rect.position.x + offset_x, draw_rect.position.y + offset_y, Base.has_flag(widget.flags, UiScaleImageToBox) ? draw_rect.width : image_rect.width, Base.has_flag(widget.flags, UiScaleImageToBox) ? draw_rect.height : image_rect.height);
+            Base.GlobalContext.drawImage(image_bitmap, image_rect.position.x, image_rect.position.y, image_rect.width * scale_x, image_rect.height * scale_y, draw_rect.position.x + offset_x, draw_rect.position.y + offset_y, Base.has_flag(widget.flags, UiScaleImageToBox) ? draw_rect.width : image_rect.width, Base.has_flag(widget.flags, UiScaleImageToBox) ? draw_rect.height : image_rect.height);
         }
         else {
             Base.GlobalContext.drawImage(image_bitmap, 0, 0, Math.min(draw_rect.width, image_bitmap.width) * scale_x, Math.min(draw_rect.height, image_bitmap.height) * scale_y, draw_rect.position.x + offset_x, draw_rect.position.y + offset_y, Base.has_flag(widget.flags, UiScaleImageToBox) ? draw_rect.width : image_bitmap.width, Base.has_flag(widget.flags, UiScaleImageToBox) ? draw_rect.height : image_bitmap.height);
@@ -394,6 +399,7 @@ export function Ui_WidgetWithInteraction(widget) {
         widget,
         clicked: false,
         dragging: false,
+        double_clicked: false,
         hovering: false,
         scroll_x: 0,
         scroll_y: 0,
@@ -407,12 +413,19 @@ export function Ui_WidgetWithInteraction(widget) {
         Ui_SetActive(widget.id);
         Ui_SetFocused(widget.id);
         UiState.drag_start.set(Ui_Cursor().position);
+        const history = UiState.key_press_history.get(Input.MBttn.M_LEFT);
+        if (history && (history.id === widget.id &&
+            UiState.current_frame - history.frame < 10)) {
+            interaction.double_clicked = true;
+            history.id = Base.u640;
+        }
     }
     if (Base.has_flag(widget.flags, UiClickable) &&
         mouse_in_rect &&
         !Ui_MButtonDown() &&
         Ui_IsActive(widget.id)) {
         Ui_SetActive(Base.u640);
+        UiState.key_press_history.set(Input.MBttn.M_LEFT, { id: widget.id, frame: UiState.current_frame });
         interaction.clicked = true;
         UiState.is_dragging = false;
     }
@@ -453,7 +466,7 @@ export function Ui_WidgetWithInteraction(widget) {
         }
         let scrolled = false;
         if (Base.has_flag(widget.flags, UiScrollView) &&
-            mouse_in_rect) {
+            mouse_in_rect && !UiState.input_instance.is_down(Input.KKey.KEY_S)) {
             let { deltaX: dx, deltaY: dy } = evt[1];
             if (UiState.input_instance.is_down(Input.KKey.KEY_LShift)) {
                 let tmp = dx;
@@ -511,21 +524,70 @@ export function Container(text, rect, flags = 0, view_width = null, view_height 
 export function TextInput(state, text, rect, flags = 0) {
     const text_rect = Container(text + "#" + state.value, rect, UiClickable |
         UiDrawText |
+        UiTextCentered |
         UiTextCenteredY | flags);
-    let evt = UiState.input_instance.next_event();
-    for (; evt; evt = UiState.input_instance.next_event()) {
-        if (!["keyup", "keydown"].includes(evt[0])) {
-            continue;
-        }
-        const is_key_down = UiState.input_instance.is_down(evt[1].keyCode);
-        if (Ui_IsFocused(text_rect.widget.id)) {
+    let text_metrics = Ui_RectFromText(state.value, text_rect.widget.font_size, text_rect.widget.font);
+    const input_selection = text_rect.widget.selection;
+    if (Ui_IsFocused(text_rect.widget.id)) {
+        let evt = UiState.input_instance.next_event();
+        if (evt && ["keyup", "keydown"].includes(evt[0])) {
+            const is_key_down = UiState.input_instance.is_down(evt[1].keyCode);
             if (is_key_down) {
                 Ui_SetActive(text_rect.widget.id);
-                state.value += evt[1].key;
+                if (UiState.input_instance.is_down(Input.KKey.KEY_Backspace)) {
+                    state.value = state.value.substring(0, state.value.length - 1);
+                    if (input_selection.x > 0 && input_selection.y > 0) {
+                        while (text_metrics.width > 0 && text_metrics.height > 0) {
+                            state.value = state.value.substring(0, state.value.length - 1);
+                            text_metrics = Ui_RectFromText(state.value, text_rect.widget.font_size, text_rect.widget.font);
+                        }
+                        input_selection.x = 0;
+                        input_selection.y = 0;
+                    }
+                }
+                else {
+                    if (input_selection.x > 0 && input_selection.y > 0) {
+                        while (text_metrics.width > 0 && text_metrics.height > 0) {
+                            state.value = state.value.substring(0, state.value.length - 1);
+                            text_metrics = Ui_RectFromText(state.value, text_rect.widget.font_size, text_rect.widget.font);
+                        }
+                        input_selection.x = 0;
+                        input_selection.y = 0;
+                    }
+                    state.value += evt[1].key;
+                }
             }
         }
+        const sine_wave = 0.5 * (1 + Math.sin(UiState.current_frame * (1 / 60) * 10));
+        PushGeneralBackgroundColor(Base.RGBA(0, 0, 0, sine_wave));
+        PushPadding(0, 0, 0, 0);
+        PushBorderPx(0);
+        PushRoundedCorners(0, 0, 0, 0);
+        const selection = CleanWidgetWithInteraction(text + "--" + "cursor", Base.Rect(rect.position.x + text_rect.widget.border_and_padding_increment.position.x + text_metrics.width + 2, rect.position.y + (rect.height - 25) / 4 + text_rect.widget.border_and_padding_increment.position.y, 2, 25), UiDrawBackground);
+        PopRoundedCorners();
+        PopBorderPx();
+        PopPadding();
+        PopGeneralBackgroundColor();
     }
-    return (state);
+    else {
+        input_selection.x = 0;
+        input_selection.y = 0;
+    }
+    if (text_rect.double_clicked) {
+        input_selection.x = text_metrics.width;
+        input_selection.y = text_metrics.height;
+    }
+    if (input_selection.x > 0 && input_selection.y > 0) {
+        //console.log(input_selection);
+        PushGeneralBackgroundColor(Base.RGBA(0, 0, 0, 0.4));
+        PushPadding(0, 0, 0, 0);
+        PushBorderPx(0);
+        const selection = CleanWidgetWithInteraction(text + "--" + "selection", Base.Rect(rect.position.x + text_rect.widget.border_and_padding_increment.position.x, rect.position.y + (rect.height - input_selection.y) / 4 + text_rect.widget.border_and_padding_increment.position.y, input_selection.x, input_selection.y + text_rect.widget.border_and_padding_increment.height), UiDrawBackground);
+        PopBorderPx();
+        PopPadding();
+        PopGeneralBackgroundColor();
+    }
+    return (text_rect);
 }
 export function ImageContainer(text, rect, image, flags = 0, img_rect = null) {
     const widget = Ui_Widget_new(text, rect, UiDrawImage | flags);
@@ -597,23 +659,11 @@ export function FrameEnd() {
     }
     for (let i = 0; i < UiState.stack.length; i++) {
         const widget = UiState.stack[i];
-        //if (Base.has_flag(widget.flags, UiScrollView))
-        //{
-        //	UiState.view_offsets.set(widget.id, widget.view_offset);
-        //}
-        //if (Base.has_flag(widget.flags, UiPersistSize))
-        //{
-        //	UiState.sizes.set(widget.id, {
-        //		width: widget.rect.width,
-        //		height: widget.rect.height,
-        //	});
-        //}
+        if (UiState.current_frame - widget.last_rendered_frame > 5) {
+            UiState.stack.splice(i, 1);
+            continue;
+        }
         Ui_DrawWidget(widget);
-        //widget.last_frame_width		= widget.rect.width;
-        //widget.last_frame_height	= widget.rect.height;
-        //widget.last_frame_x				= widget.rect.position.x;
-        //widget.last_frame_y				= widget.rect.position.y;
-        //debugger;
     }
     UiState.input_instance.consume_event();
     UiState.current_frame += 1;
@@ -632,8 +682,8 @@ export function AbsolutePositionFromInteraction(interaction) {
     return ([x, y]);
 }
 export function SizeFromInteraction(interaction) {
-    const w = interaction.widget.rect.width - interaction.widget.padding[WidgetPLeft];
-    const h = interaction.widget.rect.height - interaction.widget.padding[WidgetPBottom];
+    const w = interaction.widget.rect.width;
+    const h = interaction.widget.rect.height;
     return ([w, h]);
 }
 export function PushBackgroundColor(color) {
@@ -869,28 +919,49 @@ function FindSpriteBySourceCoords(x, y) {
     }
     return (found);
 }
-const load_sprite_data = {
-    name: { value: "" },
-    description: { value: "" }
-};
 const SpriteLoaderSlotSize = 64;
 const sprite_loader_state = {
     selected_sprite: 0,
+    scaling: 1,
 };
 export function DrawSpriteLoader(source_image) {
     PushRoundedCorners(0, 0, 0, 0);
     PushBorderPx(0);
     PushGeneralBackgroundColor(Base.RGBA(0, 0, 0, 0.1));
     PushPadding(0, 0, 0, 0);
-    const image_container = Container("sprite-loader-container", Base.Rect(30, 30, 800, 600), UiScrollView | UiScrollViewY | UiScrollViewX | UiViewClamp | UiViewClampX | UiViewClampY | UiDrawBorder | UiDrawBackground, source_image.width, source_image.height);
+    const image_container = Container("sprite-loader-container", Base.Rect(30, 30, 800, 600), UiScrollView | UiScrollViewY | UiScrollViewX | UiViewClamp | UiViewClampX | UiViewClampY | UiDrawBorder | UiDrawBackground, source_image.width / sprite_loader_state.scaling, source_image.height / sprite_loader_state.scaling);
     const image_container_visible_size = SizeFromInteraction(image_container);
     const image_container_abs_position = AbsolutePositionFromInteraction(image_container);
     const image_container_position = PositionFromInteraction(image_container);
-    const image = ImageContainer("sprite-loader-container-image", Base.Rect(image_container_position[0], image_container_position[1], image_container_visible_size[0], image_container_visible_size[1]), source_image, 0, Base.Rect(image_container.widget.view_offset.x, image_container.widget.view_offset.y, image_container_visible_size[0], image_container_visible_size[1]));
+    const image = ImageContainer("sprite-loader-container-image", Base.Rect(image_container_position[0], image_container_position[1], image_container_visible_size[0], image_container_visible_size[1]), source_image, UiClickable | UiDragabble | UiDragabbleX | UiDragabbleY | UiScaleImageToBox | UiScroll | UiImageCenteredX | UiImageCenteredY | UiImageCentered, Base.Rect(image_container.widget.view_offset.x * sprite_loader_state.scaling, image_container.widget.view_offset.y * sprite_loader_state.scaling, image_container_visible_size[0] * sprite_loader_state.scaling, image_container_visible_size[1] * sprite_loader_state.scaling));
     PopPadding();
     PopGeneralBackgroundColor();
     PopBorderPx();
     PopRoundedCorners();
+    if (image.dragging) {
+        const delta = Ui_DragDelta();
+        const dx = delta.x * 100 * UiState.delta_time;
+        const dy = delta.y * 100 * UiState.delta_time;
+        const max_view_x = Math.max(0, (source_image.width / sprite_loader_state.scaling) - image_container_visible_size[0]);
+        const max_view_y = Math.max(0, (source_image.height / sprite_loader_state.scaling) - image_container_visible_size[1]);
+        //if(Base.has_flag(image_container.widget.flags, UiViewClampX))
+        //{
+        //	image_container.widget.view_offset.x = Base.Clamp(image_container.widget.view_offset.x - dx, 0, max_view_x);
+        //}
+        //if(Base.has_flag(image_container.widget.flags, UiViewClampY))
+        //{
+        //	image_container.widget.view_offset.y = Base.Clamp(image_container.widget.view_offset.y - dy, 0, max_view_y);
+        //}
+        image_container.widget.view_offset.x = image_container.widget.view_offset.x - dx;
+        image_container.widget.view_offset.y = image_container.widget.view_offset.y - dy;
+        UiState.drag_start.set(Ui_Cursor().position);
+    }
+    if (UiState.input_instance.is_down(Input.KKey.KEY_S)) {
+        if (image.scroll_y != 0) {
+            // TODO(rnoba): fix scalling to translate view towards cursor position
+            sprite_loader_state.scaling = Math.max((image.scroll_y * 0.01) * UiState.delta_time + sprite_loader_state.scaling, 0.2);
+        }
+    }
     // scan image and crop sprites
     const count_x = Base.floor(source_image.width / default_sprite_size);
     const count_y = Base.floor(source_image.height / default_sprite_size);
@@ -909,15 +980,19 @@ export function DrawSpriteLoader(source_image) {
     }
     const loaded_container_x = image_container_visible_size[0] + 30 + 30;
     const loaded_container_y = 30;
-    const loaded_container = Container("loaded-container", Base.Rect(loaded_container_x, loaded_container_y, 506, 600), UiDrawBorder | UiScrollViewY | UiScrollView | UiViewClamp | UiViewClampY, null, (from_source.length / 7 * SpriteLoaderSlotSize * Ui_InventorySpacingY) + 2 * from_source.length / 6);
+    PushGeneralBackgroundColor(Base.RGBA_FULL_TRANSPARENT);
+    PushBorderPx(1);
+    const loaded_container = Container("loaded-container", Base.Rect(loaded_container_x, loaded_container_y, 7 * SpriteLoaderSlotSize * Ui_InventorySpacingY, 600), UiDrawBorder | UiScrollViewY | UiScrollView | UiViewClamp | UiViewClampY, null, (from_source.length / 7 * SpriteLoaderSlotSize * Ui_InventorySpacingY) + from_source.length / 7);
+    PopBorderPx();
+    PopGeneralBackgroundColor();
     const loaded_container_pos = PositionFromInteraction(loaded_container);
     const loaded_container_size = SizeFromInteraction(loaded_container);
     const loaded_container_col = Base.floor(loaded_container_size[0] / SpriteLoaderSlotSize);
     PushBorderPx(1);
     PushRoundedCorners(0, 0, 0, 0);
     for (let x = 0; x < from_source.length; x++) {
-        const nx = loaded_container_pos[0] + Base.floor(x % loaded_container_col) * SpriteLoaderSlotSize * Ui_InventorySpacingX + (Base.round(SpriteLoaderSlotSize / 4));
-        const ny = loaded_container_pos[1] + Base.floor(x / loaded_container_col) * SpriteLoaderSlotSize * Ui_InventorySpacingY - loaded_container.widget.view_offset.y;
+        const nx = loaded_container_pos[0] + Base.floor(x % loaded_container_col) * SpriteLoaderSlotSize * Ui_InventorySpacingX + loaded_container.widget.border_and_padding_increment.position.x;
+        const ny = loaded_container_pos[1] + Base.floor(x / loaded_container_col) * SpriteLoaderSlotSize * Ui_InventorySpacingY + loaded_container.widget.border_and_padding_increment.position.y - loaded_container.widget.view_offset.y;
         const sprite = from_source[x];
         if (ImageContainer("loaded-slot" + x, Base.Rect(nx, ny, SpriteLoaderSlotSize, SpriteLoaderSlotSize), source_image, UiClickable | UiImageCentered | UiDrawBorder, sprite.rect).clicked) {
             sprite_loader_state.selected_sprite = x;
@@ -955,23 +1030,48 @@ export function DrawSpriteLoader(source_image) {
         PushBorderPx(0);
         Container(`selected-sprite-overlay#${altered_size[0]}-${altered_size[1]}`, Base.Rect(selected_sprite_offset_x, selected_sprite_offset_y, altered_size[0], altered_size[1]), UiTextCentered | UiTextCenteredX | UiTextCenteredY | UiDrawText);
         PopGeneralBackgroundColor();
+        let new_width = altered_size[0];
+        let new_height = altered_size[1];
         for (let i = 0; i < 4; i++) {
             const x = Base.floor(i % 2);
             const y = Base.floor(i / 2);
             const offset_x = (x === 0 && x === y) ? 0 : (x === 1 ? 10 : 0);
             const offset_y = (y === 1) ? 10 : 0;
-            const dragabble = CleanWidgetWithInteraction("selected-sprite-overlay-drag-area" + i, Base.Rect(selected_sprite_offset_x + (x * selected_sprite.rect.width - offset_x), selected_sprite_offset_y + (y * selected_sprite.rect.height - offset_y), 10, 10), UiClickable | UiDrawBackground | UiDragabble);
-            //if (UiState.is_dragging && Ui_WidgetIsActive(dragabble.widget.id))
-            //{
-            //	const delta = Ui_DragDelta();
-            //	altered_size[0] += delta.x * x;
-            //	altered_size[1] += delta.y * y;
-            //	//console.log(x, y)
-            //}
+            const dragabble = CleanWidgetWithInteraction("selected-sprite-overlay-drag-area" + i, Base.Rect(selected_sprite_offset_x + (x * altered_size[0] - offset_x), selected_sprite_offset_y + (y * altered_size[1] - offset_y), 10, 10), UiClickable | UiDrawBackground | UiDragabble);
+            if (dragabble.dragging) {
+                const delta = Ui_DragDelta();
+                new_width += delta.x * x;
+                new_height += delta.y * y;
+                UiState.drag_start.set(Ui_Cursor().position);
+            }
         }
+        altered_size[0] = new_width;
+        altered_size[1] = new_height;
         PopBorderPx();
         PopPadding();
         PopTextColor();
         PopRoundedCorners();
     }
+    PushRoundedCorners(3, 3, 3, 3);
+    PushGeneralBackgroundColor(Base.RGBA_FULL_TRANSPARENT);
+    PushTextColor(Base.RGBA_FULL_BLACK);
+    PushPadding(2, 2, 4, 4);
+    PushBorderPx(1);
+    const name_input = TextInput(selected_sprite.name, "selected-sprite-overlay-name-input", Base.Rect(image_container_position[0], image_container_position[1] + image_container_visible_size[1] + 5, 200, 30), UiDrawBorder);
+    PopBorderPx();
+    PopPadding();
+    PopTextColor();
+    PopGeneralBackgroundColor();
+    PopRoundedCorners();
+    PushRoundedCorners(3, 3, 3, 3);
+    PushGeneralBackgroundColor(Base.RGBA_FULL_TRANSPARENT);
+    PushTextColor(Base.RGBA_FULL_BLACK);
+    PushPadding(2, 2, 4, 4);
+    PushBorderPx(1);
+    TextInput(selected_sprite.description, "selected-sprite-overlay-description-input", Base.Rect(image_container_position[0] + 200 + name_input.widget.border_and_padding_increment.position.x + name_input.widget.border_and_padding_increment.width, image_container_position[1] + image_container_visible_size[1] + 5, 250, 30), UiDrawBorder);
+    PopBorderPx();
+    PopPadding();
+    PopTextColor();
+    PopGeneralBackgroundColor();
+    PopRoundedCorners();
 }

@@ -11,16 +11,16 @@ export type Sprite = {
 	offset_x: number; 
 	offset_y: number; 
 
-	description: string;
-	name: string;
+	description: { value: string };
+	name: { value: string };
 }
 
 export function Sprite_new(
 	rect: Base.Rect,
 	offset_x: number, 
 	offset_y: number, 
-	description: string = "<EMPTY>",
-	name: string = "<EMPTY>",
+	description: string = "<DESCRIPTION>",
+	name: string = "<NAME>",
 )
 {
 	const id = Base.hash_string(name + description + Math.random());
@@ -29,8 +29,12 @@ export function Sprite_new(
 		rect,
 		offset_x,
 		offset_y,
-		description,
-		name
+		description: {
+			value: description
+		},
+		name: {
+			value: name
+		}
 	}
 	return (sprite);
 }

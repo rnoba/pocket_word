@@ -133,8 +133,11 @@ export function RGBA(r: number, g: number, b: number, a: number = 1.0): RGBA
 }
 
 export const RGBA_FULL_RED		= RGBA(255, 0, 0);
+export const RGBA_FULL_TRANSPARENT	= RGBA(0, 0, 0, 0);
 export const RGBA_FULL_GREEN	= RGBA(0, 255, 0);
 export const RGBA_FULL_BLUE		= RGBA(0, 0, 255);
+export const RGBA_FULL_BLACK	= RGBA(0, 0, 0);
+export const RGBA_FULL_WHITE = RGBA(255, 255, 255);
 
 const HEX = "0123456789ABCDEF";
 

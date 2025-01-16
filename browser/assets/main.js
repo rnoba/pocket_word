@@ -38,9 +38,9 @@ import * as Ui from "./ui.js";
         Ui.FrameBegin(dt);
         //if (Ui.InventoryIsOpen())
         //{
-        //Ui.DrawInventory(sprites[0] as ImageBitmap[])
         //}
         Ui.DrawSpriteLoader(sprites[1]);
+        //Ui.DrawInventory(sprites[0] as ImageBitmap[])
         Ui.FrameEnd();
     }
     let prev_timestamp = 0;

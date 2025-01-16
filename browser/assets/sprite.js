@@ -1,13 +1,17 @@
 import * as Base from "./base.js";
-export function Sprite_new(rect, offset_x, offset_y, description = "<EMPTY>", name = "<EMPTY>") {
+export function Sprite_new(rect, offset_x, offset_y, description = "<DESCRIPTION>", name = "<NAME>") {
     const id = Base.hash_string(name + description + Math.random());
     const sprite = {
         id,
         rect,
         offset_x,
         offset_y,
-        description,
-        name
+        description: {
+            value: description
+        },
+        name: {
+            value: name
+        }
     };
     return (sprite);
 }
