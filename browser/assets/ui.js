@@ -925,16 +925,7 @@ export function DrawInventory(sprites) {
 }
 const default_sprite_size = 64;
 const from_source = [];
-function FindSpriteById(id) {
-    let found = null;
-    for (let i = 0; i < from_source.length; i += 1) {
-        if (from_source[i].id == id) {
-            found = from_source[i];
-            break;
-        }
-    }
-    return (found);
-}
+const altered_sprite_sizes = [];
 // since each sprite has a diferent position in the
 // source image it can be used as an 'id'
 function FindSpriteBySourceCoords(x, y) {
@@ -984,6 +975,7 @@ export function DrawSpriteLoader(source_image) {
             const sprite = Sprite.Sprite_new(Base.Rect(sprite_x, sprite_y, default_sprite_size, default_sprite_size), 0, 0);
             console.log("push");
             from_source.push(sprite);
+            altered_sprite_sizes.push([sprite.rect.width, sprite.rect.height]);
         }
     }
     const loaded_container_x = image_container_visible_size[0] + 30 + 30;
@@ -1028,22 +1020,36 @@ export function DrawSpriteLoader(source_image) {
     else if ((image_container_position[1] + selected_sprite.rect.position.y - selected_sprite.rect.height / 2) < image_container.widget.view_offset.y) {
         image_container.widget.view_offset.y -= 1000 * UiState.dt;
     }
+    const altered_size = altered_sprite_sizes[sprite_loader_state.selected_sprite];
     if (selected_sprite_offset_x < image_container_visible_size[0] &&
         selected_sprite_offset_y < image_container_visible_size[1]) {
         PushRoundedCorners(0, 0, 0, 0);
-        PushGeneralBackgroundColor(Base.RGBA(255, 255, 255, 0.4));
         PushBorderPx(1);
         PushTextColor(Base.RGBA_FULL_BLUE);
-        Container(`selected-sprite-overlay#${selected_sprite.rect.width}-${selected_sprite.rect.height}`, Rect([
+        PushGeneralBackgroundColor(Base.RGBA(255, 255, 255, 0.4));
+        Container(`selected-sprite-overlay#${altered_size[0]}-${altered_size[1]}`, Rect([
             selected_sprite_offset_x,
             selected_sprite_offset_y
         ], [
-            selected_sprite.rect.width,
-            selected_sprite.rect.height
+            altered_size[0],
+            altered_size[1],
         ]), UiDrawBorder | UiDrawText | UiTextCentered);
+        PopGeneralBackgroundColor();
+        for (let i = 0; i < 4; i++) {
+            const x = Base.floor(i % 2);
+            const y = Base.floor(i / 2);
+            const offset_x = (x === 0 && x === y) ? 0 : (x === 1 ? 10 : 0);
+            const offset_y = (y === 1) ? 10 : 0;
+            const dragabble = CleanWidgetWithInteraction("selected-sprite-overlay-drag-area" + i, Base.Rect(selected_sprite_offset_x + (x * selected_sprite.rect.width - offset_x), selected_sprite_offset_y + (y * selected_sprite.rect.height - offset_y), 10, 10), UiClickable | UiDrawBackground | UiDragabble);
+            if (UiState.is_dragging && Ui_WidgetIsActive(dragabble.widget.id)) {
+                const delta = Ui_DragDelta();
+                altered_size[0] += delta.x * x;
+                altered_size[1] += delta.y * y;
+                //console.log(x, y)
+            }
+        }
         PopTextColor();
         PopBorderPx();
-        PopGeneralBackgroundColor();
         PopRoundedCorners();
     }
 }
