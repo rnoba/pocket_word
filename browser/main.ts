@@ -2,6 +2,7 @@ import * as Sprite	from "./sprite.js";
 import * as Base		from "./base.js";
 import * as Input		from "./input.js";
 import * as Ui			from "./ui.js";
+import * as WS			from "./socket.js";
 
 (async () => {
 	const canvas = document.getElementById("canvas") as HTMLCanvasElement;
@@ -33,9 +34,14 @@ import * as Ui			from "./ui.js";
 	//
 	const ipt = Input.init(); 
 	Ui.SetInputInstance(ipt);
+
+	const socket = WS.connect();
+	Ui.SetSocket(socket);
+
 	function draw(dt: number)
 	{
 		ipt.pool();
+
 
 		//TODO(rnoba); remove this
 		ctx!.clearRect(0, 0, 1440, 900);
@@ -45,6 +51,7 @@ import * as Ui			from "./ui.js";
 		//{
 		//}
 		Ui.DrawSpriteLoader(sprites[1] as ImageBitmap);
+		Ui.DrawDebugInfo();
 		//Ui.DrawInventory(sprites[0] as ImageBitmap[])
 		Ui.FrameEnd();
 	}

@@ -112,6 +112,7 @@ export var KKey;
     KKey[KKey["KEY_SingleQuote"] = 222] = "KEY_SingleQuote";
 })(KKey || (KKey = {}));
 const KEYBOARD_STATE_MAP = new Map();
+const KEYBOARD_PRESSED_MAP = new Map();
 const _EVENTS = [
     "pointerdown",
     "pointerup",
@@ -166,6 +167,129 @@ export function init() {
     return {
         cursor,
         deinit: dettach_listeners,
+        pressed: function (btn) {
+            let r = false;
+            switch (btn) {
+                case KKey.KEY_W:
+                case KKey.KEY_A:
+                case KKey.KEY_S:
+                case KKey.KEY_D:
+                case KKey.KEY_E:
+                case KKey.KEY_LShift:
+                case KKey.KEY_LCtrl:
+                case KKey.KEY_Backspace:
+                case KKey.KEY_Tab:
+                case KKey.KEY_Enter:
+                case KKey.KEY_Shift:
+                case KKey.KEY_Ctrl:
+                case KKey.KEY_Alt:
+                case KKey.KEY_PauseBreak:
+                case KKey.KEY_CapsLock:
+                case KKey.KEY_Escape:
+                case KKey.KEY_PageUp:
+                case KKey.KEY_Space:
+                case KKey.KEY_PageDown:
+                case KKey.KEY_End:
+                case KKey.KEY_Home:
+                case KKey.KEY_ArrowLeft:
+                case KKey.KEY_ArrowUp:
+                case KKey.KEY_ArrowRight:
+                case KKey.KEY_ArrowDown:
+                case KKey.KEY_PrintScreen:
+                case KKey.KEY_Insert:
+                case KKey.KEY_Delete:
+                case KKey.KEY_0:
+                case KKey.KEY_1:
+                case KKey.KEY_2:
+                case KKey.KEY_3:
+                case KKey.KEY_4:
+                case KKey.KEY_5:
+                case KKey.KEY_6:
+                case KKey.KEY_7:
+                case KKey.KEY_8:
+                case KKey.KEY_9:
+                case KKey.KEY_A:
+                case KKey.KEY_B:
+                case KKey.KEY_C:
+                case KKey.KEY_D:
+                case KKey.KEY_E:
+                case KKey.KEY_F:
+                case KKey.KEY_G:
+                case KKey.KEY_H:
+                case KKey.KEY_I:
+                case KKey.KEY_J:
+                case KKey.KEY_K:
+                case KKey.KEY_L:
+                case KKey.KEY_M:
+                case KKey.KEY_N:
+                case KKey.KEY_O:
+                case KKey.KEY_P:
+                case KKey.KEY_Q:
+                case KKey.KEY_R:
+                case KKey.KEY_S:
+                case KKey.KEY_T:
+                case KKey.KEY_U:
+                case KKey.KEY_V:
+                case KKey.KEY_W:
+                case KKey.KEY_X:
+                case KKey.KEY_Y:
+                case KKey.KEY_Z:
+                case KKey.KEY_LeftWindowKey:
+                case KKey.KEY_RightWindowKey:
+                case KKey.KEY_SelectKey:
+                case KKey.KEY_Numpad0:
+                case KKey.KEY_Numpad1:
+                case KKey.KEY_Numpad2:
+                case KKey.KEY_Numpad3:
+                case KKey.KEY_Numpad4:
+                case KKey.KEY_Numpad5:
+                case KKey.KEY_Numpad6:
+                case KKey.KEY_Numpad7:
+                case KKey.KEY_Numpad8:
+                case KKey.KEY_Numpad9:
+                case KKey.KEY_Multiply:
+                case KKey.KEY_Add:
+                case KKey.KEY_Subtract:
+                case KKey.KEY_DecimalPoint:
+                case KKey.KEY_Divide:
+                case KKey.KEY_F1:
+                case KKey.KEY_F2:
+                case KKey.KEY_F3:
+                case KKey.KEY_F4:
+                case KKey.KEY_F5:
+                case KKey.KEY_F6:
+                case KKey.KEY_F7:
+                case KKey.KEY_F8:
+                case KKey.KEY_F9:
+                case KKey.KEY_F10:
+                case KKey.KEY_F11:
+                case KKey.KEY_F12:
+                case KKey.KEY_NumLock:
+                case KKey.KEY_ScrollLock:
+                case KKey.KEY_MyComputer:
+                case KKey.KEY_MyCalculator:
+                case KKey.KEY_SemiColon:
+                case KKey.KEY_EqualSign:
+                case KKey.KEY_Comma:
+                case KKey.KEY_Dash:
+                case KKey.KEY_Period:
+                case KKey.KEY_ForwardSlash:
+                case KKey.KEY_OpenBracket:
+                case KKey.KEY_BackSlash:
+                case KKey.KEY_CloseBracket:
+                case KKey.KEY_SingleQuote:
+                    {
+                        r = KEYBOARD_PRESSED_MAP.get(btn) || false;
+                        if (r) {
+                            KEYBOARD_PRESSED_MAP.set(btn, false);
+                        }
+                    }
+                    break;
+                default:
+                    break;
+            }
+            return (r);
+        },
         is_down: function (btn) {
             let r = false;
             switch (btn) {
@@ -322,6 +446,9 @@ export function init() {
                             const repeat = evt[1].repeat;
                             const is_key_down = (name === "keydown");
                             if (repeat === false) {
+                                if (!is_key_down && KEYBOARD_STATE_MAP.get(key_code)) {
+                                    KEYBOARD_PRESSED_MAP.set(key_code, !is_key_down);
+                                }
                                 KEYBOARD_STATE_MAP.set(key_code, is_key_down);
                             }
                         }

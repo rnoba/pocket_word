@@ -1,6 +1,8 @@
 import * as Base	from "./base.js";
 import * as Input from "./input.js";
 import * as Sprite from "./sprite.js";
+import * as Socket from "./socket.js";
+import * as Packet from "./packet.js";
 
 const Ui_DefaultWidgetPaddingPxH = 1;
 const Ui_DefaultWidgetPaddingPxV = 1;
@@ -140,12 +142,7 @@ interface Ui_State
 	current_frame: number;
 	delta_time: number;
 	input_instance: null | Input.InputInstance;
-
-	//cleanup: Map<WidgetId, {widget: Ui_Widget, frame: number}>; 
-	//draggables: Map<WidgetId, Ui_Draggable>;
-	//view_offsets: Map<WidgetId, Base.V2>;
-	//sizes: Map<WidgetId, {width: number, height: number}>;
-
+	socket: WebSocket | null;
 	rounded_corner_radii_stack: Array<[number, number, number, number]>;
 	active_color_stack: Base.RGBA[];
 	border_color_stack: Base.RGBA[];
@@ -180,12 +177,18 @@ const UiState: Ui_State = {
 	bg_color_stack: [],
 	padding_stack: [],
 	font_stack: [],
+	socket: null,
 	key_press_history: new Map(), 
 }
 
 export function SetInputInstance(input: Input.InputInstance)
 {
 	UiState.input_instance = input;
+}
+
+export function SetSocket(socket: WebSocket)
+{
+	UiState.socket = socket;
 }
 
 function Ui_Push(wid: Ui_Widget)
@@ -671,7 +674,7 @@ export function Ui_WidgetWithInteraction(widget: Ui_Widget)
 		if (history && (history.id === widget.id &&
 										UiState.current_frame-history.frame < 10))
 		{
-			interaction.double_clicked = true;
+			interaction.double_clicked	= true;
 			history.id = Base.u640;
 		}
 	}
@@ -836,6 +839,7 @@ export function TextInput(state: {value: string}, text: string, rect: Base.Rect,
 
 	if (Ui_IsFocused(text_rect.widget.id))
 	{
+
 		let evt = UiState.input_instance!.next_event();
 		if (evt && ["keyup", "keydown"].includes(evt[0]))
 		{
@@ -882,25 +886,29 @@ export function TextInput(state: {value: string}, text: string, rect: Base.Rect,
 				}
 			}
 		}
-		const sine_wave = 0.5 * (1 + Math.sin(UiState.current_frame * (1/60) * 10));
-		PushGeneralBackgroundColor(Base.RGBA(0, 0, 0, sine_wave)); 
-		PushPadding(0, 0, 0, 0);
-		PushBorderPx(0);
-		PushRoundedCorners(0, 0, 0, 0);
-		const selection = CleanWidgetWithInteraction(
-			text+"--"+"cursor",
-			Base.Rect(
-				rect.position.x + text_rect.widget.border_and_padding_increment.position.x + text_metrics.width + 2,
-				rect.position.y + (rect.height-25)/4 + text_rect.widget.border_and_padding_increment.position.y,
-				2,
-				25
-			),
-			UiDrawBackground
-		);
-		PopRoundedCorners();
-		PopBorderPx();
-		PopPadding();
-		PopGeneralBackgroundColor();
+
+		if (input_selection.x === 0 && input_selection.y === 0)
+		{
+			const sine_wave = 0.5 * (1 + Math.sin(UiState.current_frame * (1/60) * 10));
+			PushGeneralBackgroundColor(Base.RGBA(0, 0, 0, sine_wave)); 
+			PushPadding(0, 0, 0, 0);
+			PushBorderPx(0);
+			PushRoundedCorners(0, 0, 0, 0);
+			const selection = CleanWidgetWithInteraction(
+				text+"--"+"cursor",
+				Base.Rect(
+					rect.position.x + text_rect.widget.border_and_padding_increment.position.x + text_metrics.width + 2,
+					rect.position.y + (rect.height-25)/4 + text_rect.widget.border_and_padding_increment.position.y,
+					2,
+					25
+				),
+				UiDrawBackground
+			);
+			PopRoundedCorners();
+			PopBorderPx();
+			PopPadding();
+			PopGeneralBackgroundColor();
+		}
 	}
 	else
 	{
@@ -1063,8 +1071,8 @@ export function PositionFromInteraction(interaction: WidgetInteracion): Base.Pai
 	const y = interaction.widget.rect.position.y;
 
 	return ([
-		x + interaction.widget.border_size_px + interaction.widget.padding[WidgetPLeft],
-		y + interaction.widget.border_size_px + interaction.widget.padding[WidgetPTop]
+		x + interaction.widget.border_size_px + interaction.widget.border_and_padding_increment.position.x,
+		y + interaction.widget.border_size_px + interaction.widget.border_and_padding_increment.position.x
 	]);
 }
 
@@ -1072,6 +1080,7 @@ export function AbsolutePositionFromInteraction(interaction: WidgetInteracion): 
 {
 	const x = interaction.widget.rect.position.x;
 	const y = interaction.widget.rect.position.y;
+
 	return ([x, y]);
 }
 
@@ -1079,7 +1088,12 @@ export function SizeFromInteraction(interaction: WidgetInteracion): Base.Pair<nu
 {
 	const w = interaction.widget.rect.width;
 	const h = interaction.widget.rect.height;
-	return ([w, h]);
+
+	return (
+		[
+			w + interaction.widget.border_and_padding_increment.width,
+			h + interaction.widget.border_and_padding_increment.height,
+		]);
 }
 
 export function PushBackgroundColor(color: Base.RGBA)
@@ -1429,11 +1443,13 @@ interface SpriteLoaderState
 {
 	selected_sprite: number;
 	scaling: number;
+	allow_overlapping_sprites: boolean;
 }
 
 const sprite_loader_state: SpriteLoaderState = {
 	selected_sprite: 0,
 	scaling: 1,
+	allow_overlapping_sprites: false
 }
 
 export function DrawSpriteLoader(source_image: ImageBitmap)
@@ -1443,7 +1459,7 @@ export function DrawSpriteLoader(source_image: ImageBitmap)
 	PushGeneralBackgroundColor(Base.RGBA(0, 0, 0, 0.1));
 	PushPadding(0, 0, 0, 0);
 	const image_container = Container("sprite-loader-container", Base.Rect(30, 30, 800, 600),
-																				 UiScrollView|UiScrollViewY|UiScrollViewX|UiViewClamp|UiViewClampX|UiViewClampY|UiDrawBorder|UiDrawBackground,
+																				 UiScrollView|UiScrollViewY|UiScrollViewX/*|UiViewClamp|UiViewClampX|UiViewClampY*/|UiDrawBorder|UiDrawBackground,
 																				 source_image.width	/sprite_loader_state.scaling,
 																				 source_image.height/sprite_loader_state.scaling);
 	const image_container_visible_size = SizeFromInteraction(image_container);
@@ -1680,4 +1696,129 @@ export function DrawSpriteLoader(source_image: ImageBitmap)
 	PopTextColor();
 	PopGeneralBackgroundColor();
 	PopRoundedCorners();
+
+	PushRoundedCorners(3, 3, 3, 3);
+	PushGeneralBackgroundColor(Base.RGBA_FULL_TRANSPARENT);
+	PushTextColor(Base.RGBA_FULL_BLACK);
+	PushPadding(2, 2, 4, 4);
+	PushBorderPx(1);
+	if (Button(
+		"selected-sprite-overlay-description-save-btn#Save", 
+		Base.Rect(
+			image_container_position[0] + 200 + name_input.widget.border_and_padding_increment.position.x 
+				+ name_input.widget.border_and_padding_increment.width + 270,
+			image_container_position[1] + image_container_visible_size[1] + 5,
+			100, 30 
+		),
+		UiDrawBorder
+	).clicked)
+	{
+		Socket.send_packet(UiState.socket!, Packet.PingPacket);
+	}
+	PopBorderPx();
+	PopPadding();
+	PopTextColor();
+	PopGeneralBackgroundColor();
+	PopRoundedCorners();
+}
+
+interface DebugInfoState {
+	show: boolean;
+}
+
+const debug_info_state: DebugInfoState = {
+	show: false
+};
+
+const stacks = [
+	"stack",
+	"rounded_corner_radii_stack",
+	"active_color_stack",
+	"border_color_stack",
+	"text_offset_stack",
+	"text_color_stack",
+	"border_px_stack",
+	"hot_color_stack",
+	"bg_color_stack",
+	"padding_stack",
+	"font_stack"
+]
+
+export function DrawDebugInfo()
+{
+	if (UiState.input_instance!.pressed(Input.KKey.KEY_F1))
+	{
+		debug_info_state.show = !debug_info_state.show;
+	}
+
+	if (debug_info_state.show)
+	{
+		PushRoundedCorners(3, 3, 3, 3);
+		PushGeneralBackgroundColor(Base.RGBA(0, 0, 0, 0.5));
+		PushTextColor(Base.RGBA_FULL_BLACK);
+		PushPadding(5, 5, 5, 5);
+		PushBorderPx(1);
+		const dbg_info_container = Container(
+			"debug-info--container", 
+			Base.Rect(
+				0, 0,
+				500, 500 
+			),
+			UiDrawBackground|UiDrawBorder
+		)
+		PopBorderPx();
+		PopPadding();
+		PopTextColor();
+		PopGeneralBackgroundColor();
+		PopRoundedCorners();
+
+		const container_pos = PositionFromInteraction(dbg_info_container);
+		PushTextColor(Base.RGBA_FULL_WHITE);
+		PushPadding(0, 0, 0, 0);
+		PushBorderPx(1);
+		const text = CleanWidgetWithInteraction(
+			`debug-info--container--current_frame#current frame: ${UiState.current_frame}`, 
+			Base.Rect(
+				container_pos[0], container_pos[1],
+				0, 0 
+			),
+			UiDrawText|UiResizeToContent
+		)
+
+		const text_size = SizeFromInteraction(text);
+		let i = 0;
+		for (i = 0; i < stacks.length; i++)
+		{
+			CleanWidgetWithInteraction(
+				//@ts-ignore
+				`debug-info--container--${stacks[i]}#${stacks[i]}: ${UiState[stacks[i]].length}`, 
+				Base.Rect(
+					container_pos[0], container_pos[1] + text_size[1] + ((i + 1) * 20),
+					0, 0 
+				),
+				UiDrawText|UiResizeToContent
+			)
+		}
+		CleanWidgetWithInteraction(
+			//@ts-ignore
+			`debug-info--dt#delta time: ${Base.floor(UiState.delta_time * 1000, 2)} ms, ${Base.Fixed(1/UiState.delta_time, 1)} fps`, 
+			Base.Rect(
+				container_pos[0], container_pos[1] + text_size[1] + ((i + 1) * 20),
+				0, 0 
+			),
+			UiDrawText|UiResizeToContent
+		)
+		CleanWidgetWithInteraction(
+			//@ts-ignore
+			`debug-info--connetion-info#connection: ${Socket.get_connection_state_string(UiState.socket!)}`, 
+			Base.Rect(
+				container_pos[0], container_pos[1] + text_size[1] + ((i + 2) * 20),
+				0, 0 
+			),
+			UiDrawText|UiResizeToContent
+		)
+		PopBorderPx();
+		PopPadding();
+		PopTextColor();
+	}
 }
