@@ -1,4 +1,4 @@
-package socket 
+package server
 
 import (
 	"bytes"
@@ -10,13 +10,15 @@ import (
 	"net/http"
 
 	"github.com/gorilla/websocket"
+	"github.com/rnoba/pocket_world/server/database"
 )
 
+//TODO(rnoba) rafactoring
 var ANONYMOUS_ID	= uint64(0)
 var SERVER_ID			= uint64(1)
 
 const (
-	PacketKind_LoadAsset	= 1 << 0
+	PacketKind_SpriteInfo	= 1 << 0
 	PacketKind_Ping				= 1 << 1
 	PacketKind_Pong				= 1 << 2
 )
@@ -29,17 +31,33 @@ const (
 )
 
 type Agent struct {
-	Id		uint64
-	Kind	uint32
-	Name	[16]byte
+	Id			uint64;
+	Kind		uint32;
+	NameLen uint32;
+	Name		string;
 }
 
 type PacketPing struct {
-	Data [16]byte
+	DataLen uint32;
+	Data		string;
 }
 
 type PacketPong struct {
-	Data [16]byte
+	DataLen uint32;
+	Data		string; 
+}
+
+type PacketSpriteInfo struct {
+	Id					int64;
+	OffsetX			int32;
+	OffsetY			int32;
+	Width				int32;
+	Height			int32;
+
+	SourceFileLen uint32;
+	SourceFile		string;
+	CreatedAtLen	uint32;
+	CreatedAt			string;
 }
 
 type Packet struct {
@@ -51,7 +69,8 @@ type Packet struct {
 
 func AgentAnonymousMake() Agent {
 	agent := Agent{
-		Name: [16]byte{'A', 'N', 'O', 'N', 'Y', 'M', 'O', 'U', 'S', 0},
+		NameLen: 9,
+		Name: "ANONYMOUS", 
 		Id:		ANONYMOUS_ID,
 		Kind: AgentKind_Anonymous,
 	}
@@ -60,7 +79,8 @@ func AgentAnonymousMake() Agent {
 
 func AgentServerMake() Agent {
 	agent := Agent{
-		Name: [16]byte{'S', 'E', 'R', 'V', 'E', 'R', 0},
+		NameLen: 6,
+		Name: "SERVER", 
 		Id:		SERVER_ID,
 		Kind: AgentKind_Server,
 	}
@@ -73,7 +93,49 @@ func PacketPongMake() (*Packet, error) {
 		Kind:   PacketKind_Pong,
 		Agent:  AgentServerMake(),
 		Payload: PacketPong{
-			Data: [16]byte{'p', 'o', 'n', 'g', 0},
+			Data: "PONG",
+			DataLen: 4,
+		},
+	}
+	packet.Size = packet.Len(); 
+	if packet.Size == 0 {
+		return nil, fmt.Errorf("Could not make packet");
+	}
+	return packet, nil 
+}
+
+func PacketPingMake() (*Packet, error) {
+	packet := &Packet{
+		Size:   0,
+		Kind:   PacketKind_Ping,
+		Agent:  AgentServerMake(),
+		Payload: PacketPing{
+			Data: "PING",
+		},
+	}
+	packet.Size = packet.Len(); 
+	if packet.Size == 0 {
+		return nil, fmt.Errorf("Could not make packet");
+	}
+	return packet, nil 
+}
+
+func PacketSpriteInfoMake(item database.Item) (*Packet, error) {
+	created_at := item.CreatedAt.String();
+	packet := &Packet{
+		Size:   0,
+		Kind:   PacketKind_SpriteInfo,
+		Agent:  AgentServerMake(),
+		Payload: PacketSpriteInfo{
+			Id: item.Id,
+			OffsetX: item.OffsetX,
+			OffsetY: item.OffsetY,
+			Width:	item.Width,
+			Height: item.Height,
+			SourceFileLen: uint32(len(item.SourceFile)),
+			SourceFile: item.SourceFile,
+			CreatedAtLen: uint32(len(created_at)),
+			CreatedAt: created_at,
 		},
 	}
 	packet.Size = packet.Len(); 
@@ -96,20 +158,77 @@ func (packet *Packet) Len() uint32 {
 
 func (packet *Packet) Serialize() (*bytes.Buffer, error) {
 	buffer := new(bytes.Buffer);
+
 	if err := binary.Write(buffer, binary.LittleEndian, &packet.Size); err != nil {
-		return nil, err
+		return nil, err;
 	}
 	if err := binary.Write(buffer, binary.LittleEndian, &packet.Kind); err != nil {
-		return nil, err
+		return nil, err;
 	}
-	if err := binary.Write(buffer, binary.LittleEndian, &packet.Agent); err != nil {
-		return nil, err
+
+	if err := binary.Write(buffer, binary.LittleEndian, &packet.Agent.Id); err != nil {
+		return nil, err;
 	}
-	switch p := packet.Payload.(type) {
+
+	if err := binary.Write(buffer, binary.LittleEndian, &packet.Agent.Kind); err != nil {
+		return nil, err;
+	}
+
+	if err := binary.Write(buffer, binary.LittleEndian, &packet.Agent.NameLen); err != nil {
+		return nil, err;
+	}
+
+	sz, _ := buffer.WriteString(packet.Agent.Name);
+	if (uint32(sz) != packet.Agent.NameLen) {
+		fmt.Println("WARNING, serialization write size mismatch", sz, packet.Agent.NameLen);
+	}
+
+	switch payload := packet.Payload.(type) {
+		case PacketPing:
 		case PacketPong:
-			if err := binary.Write(buffer, binary.LittleEndian, p); err != nil {
+		{
+			if err := binary.Write(buffer, binary.LittleEndian, &payload.DataLen); err != nil {
+				return nil, err
+			}
+			sz, _ = buffer.WriteString(payload.Data);
+			if (uint32(sz) != payload.DataLen) {
+				fmt.Println("WARNING, serialization write size mismatch");
+			}
+		}
+		case PacketSpriteInfo:
+		{
+			if err := binary.Write(buffer, binary.LittleEndian, &payload.Id); err != nil {
 				return nil, err;
 			}
+			if err := binary.Write(buffer, binary.LittleEndian, &payload.OffsetX); err != nil {
+				return nil, err;
+			}
+			if err := binary.Write(buffer, binary.LittleEndian, &payload.OffsetY); err != nil {
+				return nil, err;
+			}
+			if err := binary.Write(buffer, binary.LittleEndian, &payload.Width); err != nil {
+				return nil, err;
+			}
+			if err := binary.Write(buffer, binary.LittleEndian, &payload.Height); err != nil {
+				return nil, err;
+			}
+
+			if err := binary.Write(buffer, binary.LittleEndian, &payload.SourceFileLen); err != nil {
+				return nil, err;
+			}
+
+			if _, err := buffer.WriteString(payload.SourceFile); err != nil {
+				return nil, err;
+			}
+
+			if err := binary.Write(buffer, binary.LittleEndian, &payload.CreatedAtLen); err != nil {
+				return nil, err;
+			}
+
+			if _, err := buffer.WriteString(payload.CreatedAt); err != nil {
+				return nil, err;
+			}
+		}
 		default:
 			return nil, fmt.Errorf("unsupported Payload type");
 	}
@@ -126,22 +245,69 @@ func Deserialize(data []byte) (*Packet, error) {
 	if err := binary.Read(buffer, binary.LittleEndian, &packet.Kind); err != nil {
 		return nil, err;
 	}
-	if err := binary.Read(buffer, binary.LittleEndian, &packet.Agent); err != nil {
+	if err := binary.Read(buffer, binary.LittleEndian, &packet.Agent.Id); err != nil {
 		return nil, err;
 	}
+	if err := binary.Read(buffer, binary.LittleEndian, &packet.Agent.Kind); err != nil {
+		return nil, err;
+	}
+
+	if err := binary.Read(buffer, binary.LittleEndian, &packet.Agent.NameLen); err != nil {
+		return nil, err;
+	}
+
+	name_bytes := make([]byte, packet.Agent.NameLen);
+	if err := binary.Read(buffer, binary.LittleEndian, &name_bytes); err != nil {
+		return nil, err;
+	}
+	packet.Agent.Name = string(name_bytes);
+
 	switch packet.Kind {
 		case PacketKind_Ping:
 		{
-			var ping_packet PacketPing;
-			if err := binary.Read(buffer, binary.LittleEndian, &ping_packet); err != nil {
+			var ping_packet_payload PacketPing;
+
+			if err := binary.Read(buffer, binary.LittleEndian, &ping_packet_payload.DataLen); err != nil {
 				return nil, err;
 			}
-			packet.Payload = ping_packet;
+
+			packet_payload_bytes := make([]byte, ping_packet_payload.DataLen);
+			if err := binary.Read(buffer, binary.LittleEndian, &packet_payload_bytes); err != nil {
+				return nil, err;
+			}
+			ping_packet_payload.Data = string(packet_payload_bytes);
+
+			packet.Payload = ping_packet_payload;
 		}
-		case PacketKind_LoadAsset:
-			log.Panicf("UNINPLEMENTED");
 		case PacketKind_Pong:
-			fmt.Printf("server received pong packet???\n");
+		{
+			var pong_packet_payload PacketPing;
+
+			if err := binary.Read(buffer, binary.LittleEndian, &pong_packet_payload.DataLen); err != nil {
+				return nil, err;
+			}
+
+			packet_payload_bytes := make([]byte, pong_packet_payload.DataLen);
+			if err := binary.Read(buffer, binary.LittleEndian, &packet_payload_bytes); err != nil {
+				return nil, err;
+			}
+			pong_packet_payload.Data = string(packet_payload_bytes);
+
+			packet.Payload = pong_packet_payload;
+		}
+		case PacketKind_SpriteInfo:
+		{
+			var packet_payload PacketSpriteInfo;
+			if err := binary.Read(buffer, binary.LittleEndian, &packet_payload.SourceFileLen); err != nil {
+				return nil, err;
+			}
+			payload_bytes := make([]byte, packet_payload.SourceFileLen);
+			if err := binary.Read(buffer, binary.LittleEndian, &payload_bytes); err != nil {
+				return nil, err;
+			}
+			packet_payload.SourceFile = string(payload_bytes);
+			packet.Payload = packet_payload;
+		}
 		default:
 			log.Panicf("unrecognized packet kind");
 	}
@@ -165,7 +331,6 @@ func server(w http.ResponseWriter, r *http.Request) {
 		log.Print("upgrade:", err);
 		return;
 	}
-
 	defer socket.Close();
 	for {
 		msg_type, reader, err := socket.NextReader();
@@ -187,28 +352,66 @@ func server(w http.ResponseWriter, r *http.Request) {
 			break;
 		}
 		fmt.Printf("Received packet: %+v\n", packet);
+
 		switch packet.Kind {
 			case PacketKind_Ping:
 			{
 				fmt.Print("sending pong\n");
-				pong_packet, err := PacketPongMake();
+				packet, err := PacketPongMake();
 				if err != nil {
-					fmt.Print("failed to make pong message: \n", err);
+					fmt.Print("failed to make pong packet: \n", err);
 					return;
 				}
-				fmt.Printf("Sending packet: %+v\n", pong_packet);
-				buffer, err := pong_packet.Serialize();
+
+				fmt.Printf("sending packet: %+v\n", packet);
+				buffer, err := packet.Serialize();
 				if err != nil {
-					fmt.Print("failed to serialize pong message: \n", err);
+					fmt.Print("failed to serialize pong packet: \n", err);
 					return;
 				}
 				socket.WriteMessage(websocket.BinaryMessage, buffer.Bytes());
 			}
-			case PacketKind_LoadAsset:
-				log.Panicf("UNINPLEMENTED");
 			case PacketKind_Pong:
-				fmt.Printf("server received pong packet???\n");
-				socket.Close();
+			{
+				fmt.Print("sending ping\n");
+				packet, err := PacketPingMake();
+				if err != nil {
+					fmt.Print("failed to make ping packet: \n", err);
+					return;
+				}
+				buffer, err := packet.Serialize();
+				if err != nil {
+					fmt.Print("failed to serialize ping packet: \n", err);
+					return;
+				}
+				socket.WriteMessage(websocket.BinaryMessage, buffer.Bytes());
+			}
+			case PacketKind_SpriteInfo:
+			{
+				if payload, ok	:= packet.Payload.(PacketSpriteInfo); ok {
+
+					items, err := database.QueryAllFromSourceFile(database.Pool, payload.SourceFile);
+					if err != nil {
+						fmt.Printf("%s\n", err);
+						continue;
+					}
+
+					for _, item := range items {
+						packet, err := PacketSpriteInfoMake(item);
+						if err != nil {
+							fmt.Printf("could not make packet %s\n", err);
+							break;
+						}
+						fmt.Println("sending: ", packet);
+						buffer, err := packet.Serialize();
+						if err != nil {
+							fmt.Print("failed to serialize packet\n", err);
+							return;
+						}
+						socket.WriteMessage(websocket.BinaryMessage, buffer.Bytes());
+					}
+				}
+			}
 			default:
 				fmt.Printf("unrecognized packet kind\n");
 				socket.Close();
@@ -219,5 +422,7 @@ func server(w http.ResponseWriter, r *http.Request) {
 var addr = flag.String("addr", "localhost:8080", "http service address");
 func StartServer() {
 	http.HandleFunc("/", server);
+
+	fmt.Println("Server running");
 	log.Fatal(http.ListenAndServe(*addr, nil));
 }
