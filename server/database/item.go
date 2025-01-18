@@ -13,7 +13,8 @@ func CreateItem(
 	pool *pgxpool.Pool,
 	source_file string,
 	offset_x int32, offset_y int32,
-	width int32, height int32) error {
+	width int32, height int32,
+	description string, title string) error {
 
 	if pool == nil {
 		return fmt.Errorf("Pool was not initialized");
@@ -36,10 +37,12 @@ func CreateItem(
 
 	_, err = tx.Exec(
 		ctx,
-		`INSERT INTO item (source_file, offset_x, offset_y, width, height) VALUES ($1, $2, $3, $4, $5)`,
+		`INSERT INTO items (source_file, offset_x, offset_y, width, height, description, title) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
 		source_file,
 		offset_x, offset_y,
-		width, height);
+		width, height,
+		description, title,
+	);
 
 	if err != nil {
 		log.Printf("Failed to execute query: %s", err)
@@ -58,6 +61,8 @@ type Item struct {
 	Width				int32;
 	Height			int32;
 	SourceFile	string;
+	Description	string;
+	Name				string;
 	CreatedAt		time.Time;
 }
 
@@ -80,7 +85,7 @@ func QueryAllItems(pool *pgxpool.Pool) ([]Item, error) {
 		}
 	}();
 
-	rows, err := tx.Query(ctx, `SELECT * from item`);
+	rows, err := tx.Query(ctx, `SELECT * from items`);
 	if err != nil {
 		log.Printf("Failed to execute query: %s", err)
 		return nil, err;
@@ -108,34 +113,31 @@ func QueryAllItems(pool *pgxpool.Pool) ([]Item, error) {
 
 func QueryAllFromSourceFile(pool *pgxpool.Pool, source_file string) ([]Item, error) {
 	if pool == nil {
-		return nil, fmt.Errorf("Pool was not initialized");
+		return nil, fmt.Errorf("Pool not initialized");
 	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5 * time.Second);
 	defer cancel();
 
-	tx, err := pool.Begin(ctx);
-	if err != nil {
-		return nil, err;
-	}
+	rows, err := pool.Query(ctx, `
+		SELECT id, source_file, description, name, offset_x, offset_y, width, height, created_at 
+		FROM items 
+		WHERE source_file = $1
+		`, source_file);
 
-	defer func() {
-		if err != nil {
-			log.Fatalf("Query rolled back: %v", err);
-			_ = tx.Rollback(ctx);
-		}
-	}();
-
-	rows, err := tx.Query(ctx, `SELECT * from item WHERE source_file = $1`, source_file);
 	if err != nil {
-		log.Printf("Failed to execute query: %s", err)
+		log.Printf("Failed to execute query: %s", err);
 		return nil, err;
 	}
 	defer rows.Close();
+
 	var items []Item;
 	for rows.Next() {
 		var item Item;
 		if err := rows.Scan(&item.Id,
 												&item.SourceFile,
+												&item.Description,
+												&item.Name,
 												&item.OffsetX,
 												&item.OffsetY,
 												&item.Width,

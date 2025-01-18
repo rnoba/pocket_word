@@ -62,14 +62,16 @@ func CreateTables() {
 	}()
 
 	queries := []string {
-		`CREATE TABLE IF NOT EXISTS item (
+		`CREATE TABLE IF NOT EXISTS items (
 			id SERIAL PRIMARY KEY,
 			source_file varchar(255),
-			offset_x INT,
-			offset_y INT,
-			width INT,
-			height INT,
-			created_at TIMESTAMPTZ DEFAULT now()
+			description varchar(255),
+			name				varchar(255),
+			offset_x		INT,
+			offset_y		INT,
+			width				INT,
+			height			INT,
+			created_at	TIMESTAMPTZ DEFAULT now()
 		)`,
 	};
 
