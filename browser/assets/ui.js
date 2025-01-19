@@ -63,7 +63,7 @@ function Ui_WidgetDrawRect(widget) {
         color = widget.active_color;
     }
     if (Ui_IsFocused(widget.id)) {
-        color = Base.RGBA_FULL_RED;
+        //color = Base.RGBA_FULL_RED;
     }
     Base.GlobalContext.fillStyle = Base.RGBA_to_css_string(color);
     Base.GlobalContext.strokeStyle = Base.RGBA_to_css_string(widget.border_color);
@@ -121,11 +121,29 @@ const UiState = {
 export function SetInputInstance(input) {
     UiState.input_instance = input;
 }
-export function SetSocket(socket) {
+export function Init(socket) {
     UiState.socket = socket;
+    Socket.add_listener(Packet.PacketKind.PacketKind_SpriteInfo, function (packet) {
+        UiSpriteLoaderPushFromServer(packet);
+    });
+    Socket.add_connection_hook(function () {
+        Socket.send_packet(socket, Packet.packet_request_sprite_info_make("sprites"));
+    });
 }
 function Ui_Push(wid) {
-    Base.very_stupid_array_push_back(wid, UiState.stack);
+    let place = -1;
+    for (let i = 0; i < UiState.stack.length; i++) {
+        if (!UiState.stack[i]) {
+            place = i;
+            break;
+        }
+    }
+    if (place > -1) {
+        UiState.stack[place] = wid;
+    }
+    else {
+        Base.very_stupid_array_push_back(wid, UiState.stack);
+    }
 }
 export const WidgetPTop = 0;
 export const WidgetPBottom = 1;
@@ -153,6 +171,7 @@ function Ui_Widget_new(text, rect, flags, view_width = null, view_height = null)
     }
     const from_stack = Ui_FindWidget(id);
     if (from_stack) {
+        from_stack.last_rendered_frame = UiState.current_frame;
         if (!Base.has_flag(from_stack.flags, UiPersistSize)) {
             from_stack.rect.width = rect.width;
             from_stack.rect.height = rect.height;
@@ -160,20 +179,15 @@ function Ui_Widget_new(text, rect, flags, view_width = null, view_height = null)
         if (!Base.has_flag(from_stack.flags, UiPersistPosition)) {
             from_stack.rect.position.set(rect.position);
         }
-        from_stack.border_and_padding_increment.width = Ui_WidgetHPadding(from_stack.padding) + from_stack.border_size_px * 2;
-        from_stack.border_and_padding_increment.height = Ui_WidgetVPadding(from_stack.padding) + from_stack.border_size_px * 2;
-        from_stack.border_and_padding_increment.position.x = from_stack.padding[WidgetPLeft] + from_stack.border_size_px;
-        from_stack.border_and_padding_increment.position.y = from_stack.padding[WidgetPTop] + from_stack.border_size_px;
+        from_stack.border_and_padding_increment.width = Base.Floor(Ui_WidgetHPadding(from_stack.padding) + from_stack.border_size_px * 2);
+        from_stack.border_and_padding_increment.height = Base.Floor(Ui_WidgetVPadding(from_stack.padding) + from_stack.border_size_px * 2);
+        from_stack.border_and_padding_increment.position.x = Base.Floor(from_stack.padding[WidgetPLeft] + from_stack.border_size_px);
+        from_stack.border_and_padding_increment.position.y = Base.Floor(from_stack.padding[WidgetPTop] + from_stack.border_size_px);
         from_stack.str = text;
         from_stack.flags = flags;
         from_stack.view_width = view_width;
         from_stack.view_height = view_height;
-        from_stack.last_rendered_frame = UiState.current_frame;
         return (from_stack);
-    }
-    let text_rect = null;
-    if (Base.has_flag(flags, UiDrawText)) {
-        text_rect = Ui_RectFromText(text);
     }
     const widget = {
         id,
@@ -238,12 +252,13 @@ function Ui_RectFromText(text, font_size_px = Ui_DefaultTextSize, font = Ui_Defa
         metrics.actualBoundingBoxLeft;
     const h = metrics.actualBoundingBoxAscent +
         metrics.actualBoundingBoxDescent;
-    return Base.Rect(metrics.actualBoundingBoxLeft, metrics.actualBoundingBoxAscent, Base.round(w), Base.round(h));
+    return Base.Rect(metrics.actualBoundingBoxLeft, metrics.actualBoundingBoxAscent, Base.Round(w), Base.Round(h));
 }
 function Ui_FindWidget(id) {
     let widget = null;
-    for (let i = 0; i < UiState.stack.length; i++) {
-        if (UiState.stack[i].id == id) {
+    let i = 0;
+    for (; i < UiState.stack.length; i++) {
+        if (UiState.stack[i] && UiState.stack[i].id == id) {
             widget = UiState.stack[i];
         }
     }
@@ -251,9 +266,9 @@ function Ui_FindWidget(id) {
 }
 function Ui_RectClear(widget) {
     Base.assert(Base.GlobalContext !== null, "`Ui_RectClear()` GlobalContext must be initialized");
-    const x = widget.rect.position.x - widget.border_size_px;
-    const y = widget.rect.position.y - widget.border_size_px;
-    Base.GlobalContext.clearRect(x, y, widget.rect.width + (widget.border_size_px * 2), widget.rect.height + (widget.border_size_px * 2));
+    const x = widget.rect.position.x + widget.border_and_padding_increment.position.x;
+    const y = widget.rect.position.y + widget.border_and_padding_increment.position.y;
+    Base.GlobalContext.clearRect(x, y, widget.rect.width + widget.border_and_padding_increment.width, widget.rect.height + widget.border_and_padding_increment.height);
 }
 function Ui_PointInRect(widget) {
     Base.assert(UiState.input_instance !== null, "UiState must be initialized");
@@ -296,14 +311,6 @@ function Ui_WidgetHPadding(padding) {
 // TODO(rnoba): refactor this
 function Ui_DrawWidget(widget) {
     let draw_rect = widget.rect;
-    if (draw_rect.width <
-        widget.initial_width + widget.border_and_padding_increment.width) {
-        draw_rect.width += widget.border_and_padding_increment.width;
-    }
-    if (draw_rect.height <
-        widget.initial_height + widget.border_and_padding_increment.height) {
-        draw_rect.height += widget.border_and_padding_increment.height;
-    }
     let offset_x = 0;
     let offset_y = 0;
     let scale_x = 1;
@@ -373,7 +380,7 @@ function Ui_DrawWidget(widget) {
             }
         }
     }
-    if (Base.has_flag(widget.flags, UiScaleImageToBox)) {
+    if (Base.has_flag(widget.flags, UiScaleImageToBox) || offset_x < 0 || offset_y < 0) {
         offset_x = 0;
         offset_y = 0;
     }
@@ -385,7 +392,10 @@ function Ui_DrawWidget(widget) {
         const image_bitmap = widget.image_data;
         const image_rect = widget.image_rect;
         if (image_rect) {
-            Base.GlobalContext.drawImage(image_bitmap, image_rect.position.x, image_rect.position.y, image_rect.width * scale_x, image_rect.height * scale_y, draw_rect.position.x + offset_x, draw_rect.position.y + offset_y, Base.has_flag(widget.flags, UiScaleImageToBox) ? draw_rect.width : image_rect.width, Base.has_flag(widget.flags, UiScaleImageToBox) ? draw_rect.height : image_rect.height);
+            Base.GlobalContext.drawImage(image_bitmap, Base.Floor(image_rect.position.x), Base.Floor(image_rect.position.y), draw_rect.width, draw_rect.height, 
+            //image_rect.width  * scale_x,
+            //image_rect.height * scale_y,
+            draw_rect.position.x + Base.Floor(offset_x), draw_rect.position.y + Base.Floor(offset_y), Base.Floor(draw_rect.width) - widget.border_and_padding_increment.width, Base.Floor(draw_rect.height) - widget.border_and_padding_increment.height);
         }
         else {
             Base.GlobalContext.drawImage(image_bitmap, 0, 0, Math.min(draw_rect.width, image_bitmap.width) * scale_x, Math.min(draw_rect.height, image_bitmap.height) * scale_y, draw_rect.position.x + offset_x, draw_rect.position.y + offset_y, Base.has_flag(widget.flags, UiScaleImageToBox) ? draw_rect.width : image_bitmap.width, Base.has_flag(widget.flags, UiScaleImageToBox) ? draw_rect.height : image_bitmap.height);
@@ -586,7 +596,6 @@ export function TextInput(state, text, rect, flags = 0) {
         input_selection.y = text_metrics.height;
     }
     if (input_selection.x > 0 && input_selection.y > 0) {
-        //console.log(input_selection);
         PushGeneralBackgroundColor(Base.RGBA(0, 0, 0, 0.4));
         PushPadding(0, 0, 0, 0);
         PushBorderPx(0);
@@ -633,10 +642,10 @@ export function ScrollBar(text, rect, view_widget, flags = 0) {
     if (dragabble.dragging) {
         const delta = Ui_DragDelta();
         if (Base.has_flag(view_widget.flags, UiViewClampX)) {
-            view_widget.view_offset.x = Base.Clamp(view_widget.view_offset.x + delta.x * UiState.delta_time * 600, 0, max_view_x);
+            view_widget.view_offset.x = Base.Clamp(view_widget.view_offset.x + delta.x * UiState.delta_time * 100, 0, max_view_x);
         }
         if (Base.has_flag(view_widget.flags, UiViewClampY)) {
-            view_widget.view_offset.y = Base.Clamp(view_widget.view_offset.y + delta.y * UiState.delta_time * 600, 0, max_view_y);
+            view_widget.view_offset.y = Base.Clamp(view_widget.view_offset.y + delta.y * UiState.delta_time * 100, 0, max_view_y);
         }
         UiState.drag_start.set(Ui_Cursor().position);
     }
@@ -657,7 +666,6 @@ export function FrameBegin(dt) {
     }
     Ui_PopStacks();
 }
-// TODO(rnoba): code cleanup
 export function FrameEnd() {
     if (!Ui_IsActive(Base.u640)) {
         const widget = Ui_FindWidget(UiState.active);
@@ -667,11 +675,18 @@ export function FrameEnd() {
     }
     for (let i = 0; i < UiState.stack.length; i++) {
         const widget = UiState.stack[i];
-        if (UiState.current_frame - widget.last_rendered_frame > 5) {
-            UiState.stack.splice(i, 1);
+        if (!widget)
+            continue;
+        if (UiState.current_frame - widget.last_rendered_frame > 2) {
+            delete UiState.stack[i];
             continue;
         }
         Ui_DrawWidget(widget);
+    }
+    if (UiState.current_frame % 100 === 0) {
+        window.requestIdleCallback(function () {
+            UiState.stack = UiState.stack.filter(() => true);
+        });
     }
     UiState.input_instance.consume_event();
     UiState.current_frame += 1;
@@ -681,13 +696,21 @@ export function PositionFromInteraction(interaction) {
     const y = interaction.widget.rect.position.y;
     return ([
         x + interaction.widget.border_size_px + interaction.widget.border_and_padding_increment.position.x,
-        y + interaction.widget.border_size_px + interaction.widget.border_and_padding_increment.position.x
+        y + interaction.widget.border_size_px + interaction.widget.border_and_padding_increment.position.y
     ]);
 }
 export function AbsolutePositionFromInteraction(interaction) {
     const x = interaction.widget.rect.position.x;
     const y = interaction.widget.rect.position.y;
     return ([x, y]);
+}
+export function AbsoluteSizeFromInteraction(interaction) {
+    const w = interaction.widget.rect.width;
+    const h = interaction.widget.rect.height;
+    return ([
+        w,
+        h
+    ]);
 }
 export function SizeFromInteraction(interaction) {
     const w = interaction.widget.rect.width;
@@ -803,147 +826,234 @@ function Ui_GetStackValues(widget) {
 }
 const Inventory = {
     selected_item: 0,
-    should_close: true
+    show: true
 };
-export function InventoryIsOpen() {
-    return (!Inventory.should_close);
-}
 export function DrawInventory(sprites) {
-    //let close = false;
-    PushRoundedCorners(5, 5, 5, 5);
-    PushBorderPx(3);
-    PushGeneralBackgroundColor(Base.RGBA(217, 237, 236, 1));
-    PushBorderColor(Base.RGBA(177, 177, 177));
-    PushTextColor(Base.RGBA(75, 78, 94, 0.8));
-    PushFont("GamesStudios", 18);
-    PushTextOffset(Base.V2.New(0, 5));
-    const draggable = Draggable("INVENTORY", Base.Rect(10, 10, 500, 300), UiPersistPosition);
-    const draggable_absolute_position = AbsolutePositionFromInteraction(draggable);
-    const draggable_size = SizeFromInteraction(draggable);
-    PopTextOffset();
-    PopFont();
-    PopTextColor();
-    PopBorderColor();
-    PopGeneralBackgroundColor();
-    PopBorderPx();
-    PopRoundedCorners();
-    if (draggable.dragging) {
-        const delta = Ui_DragDelta();
-        draggable.widget.rect.position.add(delta.scale(UiState.delta_time * 70));
-        UiState.drag_start.set(Ui_Cursor().position);
+    if (UiState.input_instance.pressed(Input.KKey.KEY_E)) {
+        Inventory.show = !Inventory.show;
     }
-    const close_button_position = [
-        draggable_absolute_position[0] + draggable_size[0] - 10 - draggable.widget.padding[WidgetPLeft],
-        draggable_absolute_position[1] + draggable.widget.padding[WidgetPTop]
-    ];
-    PushBorderColor(Base.RGBA(177, 177, 177));
-    PushTextColor(Base.RGBA(177, 177, 177));
-    PushTextOffset(Base.V2.New(-2, 0));
-    if (CleanWidgetWithInteraction("x", Base.Rect(close_button_position[0], close_button_position[1], 10, 10), UiDrawText |
-        UiClickable |
-        UiTextCentered).clicked) {
-        Inventory.should_close = true;
-    }
-    PopTextOffset();
-    PopTextColor();
-    PopBorderColor();
-    const inventory_slots = 40;
-    const inventory_area_view_height = Base.floor(inventory_slots / Ui_InventoryColumns) * Ui_InventorySlotSize * Ui_InventorySpacingY;
-    PushGeneralBackgroundColor(Base.RGBA(255, 255, 255, 1));
-    PushBorderPx(1);
-    PushBorderColor(Base.RGBA(177, 177, 177));
-    const offset_y = 20;
-    const inventory_area_height = draggable_size[1] - offset_y - draggable.widget.padding[WidgetPBottom];
-    const inventory_area_width = draggable_size[0] - draggable.widget.padding[WidgetPRight];
-    const container_position = [
-        draggable_absolute_position[0] + draggable.widget.padding[WidgetPLeft],
-        draggable_absolute_position[1] + offset_y + draggable.widget.padding[WidgetPTop]
-    ];
-    const inventory_area = Container("container", Base.Rect(container_position[0], container_position[1], inventory_area_width, inventory_area_height), UiClickable | UiViewClamp | UiViewClampY | UiScrollView | UiScrollViewY, null, inventory_area_view_height);
-    PopBorderColor();
-    PopBorderPx();
-    PopGeneralBackgroundColor();
-    const scrollbar_height = inventory_area_height - inventory_area.widget.border_size_px * 2 - 2;
-    const scrollbar_width = 20;
-    PushRoundedCorners(3, 3, 3, 3);
-    ScrollBar("inventory-scroll", Base.Rect(container_position[0] + Ui_InventorySlotSize * Ui_InventoryColumns * Ui_InventorySpacingX + 5, container_position[1] + inventory_area.widget.border_size_px * 2 + inventory_area.widget.padding[WidgetPTop], scrollbar_width, scrollbar_height), inventory_area.widget);
-    PopRoundedCorners();
-    const inventory_area_position = PositionFromInteraction(inventory_area);
-    PushBorderPx(2);
-    PushGeneralBackgroundColor(Base.RGBA_FULL_BLUE);
-    PushRoundedCorners(3, 3, 3, 3);
-    PushPadding(-1, -1, -1, -1);
-    for (let x = 0; x < inventory_slots; x += 1) {
-        const nx = inventory_area_position[0] + Base.floor(x % Ui_InventoryColumns) * Ui_InventorySlotSize * Ui_InventorySpacingX;
-        const ny = inventory_area_position[1] + Base.floor(x / Ui_InventoryColumns) * Ui_InventorySlotSize * Ui_InventorySpacingY - inventory_area.widget.view_offset.y;
-        if (ImageContainer("inventory-slot" + x, Base.Rect(nx, ny, Ui_InventorySlotSize, Ui_InventorySlotSize), sprites[x], UiClickable | UiDrawBackground | UiImageCentered | UiImageCenteredX | UiImageCenteredY | UiScaleImageToBox | UiDrawBorder).clicked) {
-            console.log("select ", x);
-            Inventory.selected_item = x;
+    if (Inventory.show) {
+        PushRoundedCorners(5, 5, 5, 5);
+        PushBorderPx(3);
+        PushGeneralBackgroundColor(Base.RGBA(217, 237, 236, 1));
+        PushBorderColor(Base.RGBA(177, 177, 177));
+        PushTextColor(Base.RGBA(75, 78, 94, 0.8));
+        PushFont("GamesStudios", 18);
+        PushTextOffset(Base.V2.New(0, 5));
+        const draggable = Draggable("INVENTORY", Base.Rect(10, 10, 500, 300), UiPersistPosition);
+        const draggable_absolute_position = AbsolutePositionFromInteraction(draggable);
+        const draggable_size = AbsoluteSizeFromInteraction(draggable);
+        PopTextOffset();
+        PopFont();
+        PopTextColor();
+        PopBorderColor();
+        PopGeneralBackgroundColor();
+        PopBorderPx();
+        PopRoundedCorners();
+        if (draggable.dragging) {
+            const delta = Ui_DragDelta();
+            draggable.widget.rect.position.add(delta.scale(UiState.delta_time * 70));
+            UiState.drag_start.set(Ui_Cursor().position);
         }
-    }
-    PopPadding();
-    PopBorderPx();
-    PopGeneralBackgroundColor();
-    PopRoundedCorners();
-    PushGeneralBackgroundColor(Base.RGBA(0, 0, 0, 0));
-    PushBorderPx(0);
-    const start_right_side = container_position[0] +
-        Ui_InventorySlotSize *
-            Ui_InventoryColumns *
-            Ui_InventorySpacingX + 10;
-    const left_side_width = start_right_side - container_position[0] + scrollbar_width + 5;
-    const width = inventory_area_width - left_side_width;
-    const height = inventory_area_height - 5;
-    const inv_left_area = Container("container--left", Base.Rect(start_right_side + scrollbar_width, container_position[1] + inventory_area.widget.border_size_px * 2 + inventory_area.widget.padding[WidgetPTop], width, height), UiDrawBorder);
-    const position = AbsolutePositionFromInteraction(inv_left_area);
-    PopBorderPx();
-    PopGeneralBackgroundColor();
-    if (Inventory.selected_item != -1) {
-        ImageContainer("inventory--selected-item", Base.Rect(position[0], position[1], width, height / 2), sprites[Inventory.selected_item], UiDrawBackground | UiImageCentered | UiImageCenteredX | UiImageCenteredY);
-        PushGeneralBackgroundColor(Base.RGBA(0, 0, 0, 0));
-        PushTextColor(Base.RGBA(0, 0, 0, 0.8));
+        const close_button_position = [
+            draggable_absolute_position[0] + draggable_size[0] - 15,
+            draggable_absolute_position[1] + draggable.widget.padding[WidgetPTop]
+        ];
+        PushBorderColor(Base.RGBA(177, 177, 177));
+        PushTextColor(Base.RGBA(177, 177, 177));
+        PushTextOffset(Base.V2.New(0, 0));
+        if (CleanWidgetWithInteraction("x", Base.Rect(close_button_position[0], close_button_position[1], 10, 10), UiDrawText |
+            UiClickable |
+            UiTextCentered).clicked) {
+            Inventory.show = false;
+        }
+        PopTextOffset();
+        PopTextColor();
+        PopBorderColor();
+        const inventory_slots = 40;
+        const inventory_area_view_height = Base.Floor(inventory_slots / Ui_InventoryColumns) * Ui_InventorySlotSize * Ui_InventorySpacingY;
+        PushGeneralBackgroundColor(Base.RGBA(255, 255, 255, 1));
         PushBorderPx(1);
-        PushRoundedCorners(0, 0, 0, 0);
+        PushBorderColor(Base.RGBA(177, 177, 177));
+        const offset_y = 20;
+        const inventory_area_width = draggable_size[0] - draggable.widget.padding[WidgetPRight] - 1;
+        const inventory_area_height = draggable_size[1] - offset_y - draggable.widget.padding[WidgetPBottom];
+        const container_position = [
+            draggable_absolute_position[0] + draggable.widget.padding[WidgetPLeft],
+            draggable_absolute_position[1] + offset_y + draggable.widget.padding[WidgetPTop]
+        ];
+        const inventory_area = Container("container", Base.Rect(container_position[0], container_position[1], inventory_area_width, inventory_area_height), UiClickable | UiViewClamp | UiViewClampY | UiScrollView | UiScrollViewY, null, inventory_area_view_height);
+        PopBorderColor();
+        PopBorderPx();
+        PopGeneralBackgroundColor();
+        const scrollbar_height = inventory_area_height - inventory_area.widget.border_size_px * 2 - 2;
+        const scrollbar_width = 20;
+        PushRoundedCorners(3, 3, 3, 3);
+        ScrollBar("inventory-scroll", Base.Rect(container_position[0] + Ui_InventorySlotSize * Ui_InventoryColumns * Ui_InventorySpacingX + 5, container_position[1] + inventory_area.widget.border_size_px * 2 + inventory_area.widget.padding[WidgetPTop], scrollbar_width, scrollbar_height), inventory_area.widget);
+        PopRoundedCorners();
+        const inventory_area_position = PositionFromInteraction(inventory_area);
+        const inventory_area_size = SizeFromInteraction(inventory_area);
+        PushBorderPx(1);
+        PushGeneralBackgroundColor(Base.RGBA_FULL_BLUE);
+        PushRoundedCorners(3, 3, 3, 3);
         PushPadding(1, 1, 1, 1);
-        if (Button("Place", Base.Rect(position[0], position[1] + height - 20 - 10, 100, 20)).clicked) {
-            console.log("place", Inventory.selected_item);
+        for (let x = 0; x < inventory_slots; x += 1) {
+            const nx = inventory_area_position[0] + Base.Floor(x % Ui_InventoryColumns) * Ui_InventorySlotSize * Ui_InventorySpacingX;
+            let ny = inventory_area_position[1] + Base.Floor(x / Ui_InventoryColumns) * Ui_InventorySlotSize * Ui_InventorySpacingY - inventory_area.widget.view_offset.y;
+            if (ny + Ui_InventorySlotSize < inventory_area_position[1]) {
+                continue;
+            }
+            if (ny > inventory_area_position[1] + inventory_area_size[1]) {
+                continue;
+            }
+            let height = Ui_InventorySlotSize;
+            if (ny < inventory_area_position[1]) {
+                const offset = inventory_area_position[1] - (ny);
+                height -= offset;
+                ny += offset;
+            }
+            else if (ny + Ui_InventorySlotSize + 10 > inventory_area_position[1] + inventory_area_size[1]) {
+                const offset = (ny + Ui_InventorySlotSize + 10) -
+                    (inventory_area_position[1] + inventory_area_size[1]);
+                height -= offset;
+            }
+            if (height <= 0)
+                continue;
+            if (ImageContainer("inventory-slot" + x, Base.Rect(nx, ny, Ui_InventorySlotSize, height), sprites[x], UiClickable | UiImageCentered | UiImageCenteredX | UiImageCenteredY | UiScaleImageToBox | UiDrawBorder).clicked) {
+                console.log("select ", x);
+                Inventory.selected_item = x;
+            }
         }
         PopPadding();
-        PopRoundedCorners();
         PopBorderPx();
-        PopTextColor();
         PopGeneralBackgroundColor();
+        PopRoundedCorners();
+        PushGeneralBackgroundColor(Base.RGBA(0, 0, 0, 0));
+        PushBorderPx(0);
+        const start_right_side = container_position[0] +
+            Ui_InventorySlotSize *
+                Ui_InventoryColumns *
+                Ui_InventorySpacingX + 10;
+        const left_side_width = start_right_side - container_position[0] + scrollbar_width + 5;
+        const width = inventory_area_width - left_side_width;
+        const height = inventory_area_height - 5;
+        const inv_left_area = Container("container--left", Base.Rect(start_right_side + scrollbar_width, container_position[1] + inventory_area.widget.border_size_px * 2 + inventory_area.widget.padding[WidgetPTop], width, height), UiDrawBorder);
+        const position = AbsolutePositionFromInteraction(inv_left_area);
+        PopBorderPx();
+        PopGeneralBackgroundColor();
+        if (Inventory.selected_item != -1) {
+            ImageContainer("inventory--selected-item", Base.Rect(position[0], position[1], width, height / 2), sprites[Inventory.selected_item], UiDrawBackground | UiImageCentered | UiImageCenteredX | UiImageCenteredY);
+            PushGeneralBackgroundColor(Base.RGBA(0, 0, 0, 0));
+            PushTextColor(Base.RGBA(0, 0, 0, 0.8));
+            PushBorderPx(1);
+            PushRoundedCorners(0, 0, 0, 0);
+            PushPadding(1, 1, 1, 1);
+            if (Button("Place", Base.Rect(position[0], position[1] + height - 20 - 10, 100, 20)).clicked) {
+                console.log("place", Inventory.selected_item);
+            }
+            PopPadding();
+            PopRoundedCorners();
+            PopBorderPx();
+            PopTextColor();
+            PopGeneralBackgroundColor();
+        }
     }
 }
-const default_sprite_size = 64;
-const from_source = [];
-const altered_sprite_sizes = [];
-// since each sprite has a diferent position in the
-// source image, it can be used to identify an sprite 
-function FindSpriteBySourceCoords(x, y) {
+function FindSpriteById(id, src) {
     let found = null;
-    for (let i = 0; i < from_source.length; i += 1) {
-        if (from_source[i].rect.position.x == x && from_source[i].rect.position.y === y) {
-            found = from_source[i];
+    let i = 0;
+    for (i = 0; i < src.length; i += 1) {
+        if (src[i] && src[i].id === id) {
+            found = src[i];
             break;
         }
     }
-    return (found);
+    return [found, i];
 }
-const SpriteLoaderSlotSize = 64;
+function FindSpriteBySourceCoords(x, y, src) {
+    let found = null;
+    let i = 0;
+    for (; i < src.length; i += 1) {
+        if (src[i] && src[i].rect.position.x == x && src[i].rect.position.y === y) {
+            found = src[i];
+            break;
+        }
+    }
+    return [found, i];
+}
 const sprite_loader_state = {
     selected_sprite: 0,
     scaling: 1,
-    allow_overlapping_sprites: false
+    allow_overlapping_sprites: false,
+    show: false,
+    visualizer_visible_cols: 7,
+    loaded_assets_from_server: [],
+    loaded_assets_from_image: [],
+    modified_assets: [],
+    tile_width: 64,
+    tile_height: 64,
+    loaded_assets_from_image_dummy_id: 0
 };
-export function DrawSpriteLoader(source_image) {
+export function UiSpriteLoaderPushFromServer(packet) {
+    Base.assert(packet.kind === Packet.PacketKind.PacketKind_SpriteInfo);
+    const payload = packet.payload;
+    const [from_id, _] = FindSpriteById(payload.id, sprite_loader_state.loaded_assets_from_server);
+    if (from_id) {
+        from_id.created_at = payload.created_at;
+        from_id.name.value = payload.name;
+        from_id.description.value = payload.descrition;
+        from_id.rect.position.x = payload.offset_x;
+        from_id.rect.position.y = payload.offset_y;
+        from_id.rect.width = payload.width;
+        from_id.rect.height = payload.height;
+    }
+    else {
+        const sprite = {
+            id: payload.id,
+            name: { value: payload.name },
+            description: { value: payload.descrition },
+            rect: Base.Rect(payload.offset_x, payload.offset_y, payload.width, payload.height),
+            created_at: payload.created_at,
+            offset_x: 0,
+            offset_y: 0,
+        };
+        sprite_loader_state.loaded_assets_from_server.push(sprite);
+    }
+    const [with_coords, with_coords_idx] = FindSpriteBySourceCoords(payload.offset_x, payload.offset_y, sprite_loader_state.loaded_assets_from_image);
+    if (with_coords) {
+        delete sprite_loader_state.loaded_assets_from_image[with_coords_idx];
+    }
+    const [with_id, with_id_idx] = FindSpriteById(payload.id, sprite_loader_state.loaded_assets_from_image);
+    if (with_id) {
+        delete sprite_loader_state.loaded_assets_from_image[with_id_idx];
+    }
+}
+function SpriteLoaderSave() {
+    console.log(sprite_loader_state.modified_assets);
+    for (let i = 0; i < sprite_loader_state.modified_assets.length; i++) {
+        const sprite = sprite_loader_state.modified_assets[i];
+        const [a, idx] = FindSpriteById(sprite.id, sprite_loader_state.loaded_assets_from_image);
+        if (a) {
+            a.rect = sprite.rect;
+        }
+    }
+}
+function DrawSpriteLoaderImageContainer(source_image) {
+    PushGeneralBackgroundColor(Base.RGBA(217, 237, 236, 1));
+    const container = Draggable("sprite-loader-container--wrap", Base.Rect(25, 0, 1332, 700), UiDragabble | UiPersistPosition);
+    PopGeneralBackgroundColor();
+    if (container.dragging) {
+        const delta = Ui_DragDelta();
+        container.widget.rect.position.add(delta.scale(UiState.delta_time * 70));
+        UiState.drag_start.set(Ui_Cursor().position);
+    }
+    const container_pos = AbsolutePositionFromInteraction(container);
     PushRoundedCorners(0, 0, 0, 0);
     PushBorderPx(0);
-    PushGeneralBackgroundColor(Base.RGBA(0, 0, 0, 0.1));
+    PushGeneralBackgroundColor(Base.RGBA(255, 255, 255, 1));
     PushPadding(0, 0, 0, 0);
-    const image_container = Container("sprite-loader-container", Base.Rect(30, 30, 800, 600), UiScrollView | UiScrollViewY | UiScrollViewX /*|UiViewClamp|UiViewClampX|UiViewClampY*/ | UiDrawBorder | UiDrawBackground, source_image.width / sprite_loader_state.scaling, source_image.height / sprite_loader_state.scaling);
+    const image_container = Container("sprite-loader-container", Base.Rect(container_pos[0] + 5, container_pos[1] + 10, 800, 600), UiScrollView | UiScrollViewY | UiScrollViewX | UiDrawBorder | UiDrawBackground, source_image.width / sprite_loader_state.scaling, source_image.height / sprite_loader_state.scaling);
     const image_container_visible_size = SizeFromInteraction(image_container);
-    const image_container_abs_position = AbsolutePositionFromInteraction(image_container);
     const image_container_position = PositionFromInteraction(image_container);
     const image = ImageContainer("sprite-loader-container-image", Base.Rect(image_container_position[0], image_container_position[1], image_container_visible_size[0], image_container_visible_size[1]), source_image, UiClickable | UiDragabble | UiDragabbleX | UiDragabbleY | UiScaleImageToBox | UiScroll | UiImageCenteredX | UiImageCenteredY | UiImageCentered, Base.Rect(image_container.widget.view_offset.x * sprite_loader_state.scaling, image_container.widget.view_offset.y * sprite_loader_state.scaling, image_container_visible_size[0] * sprite_loader_state.scaling, image_container_visible_size[1] * sprite_loader_state.scaling));
     PopPadding();
@@ -954,16 +1064,6 @@ export function DrawSpriteLoader(source_image) {
         const delta = Ui_DragDelta();
         const dx = delta.x * 100 * UiState.delta_time;
         const dy = delta.y * 100 * UiState.delta_time;
-        const max_view_x = Math.max(0, (source_image.width / sprite_loader_state.scaling) - image_container_visible_size[0]);
-        const max_view_y = Math.max(0, (source_image.height / sprite_loader_state.scaling) - image_container_visible_size[1]);
-        //if(Base.has_flag(image_container.widget.flags, UiViewClampX))
-        //{
-        //	image_container.widget.view_offset.x = Base.Clamp(image_container.widget.view_offset.x - dx, 0, max_view_x);
-        //}
-        //if(Base.has_flag(image_container.widget.flags, UiViewClampY))
-        //{
-        //	image_container.widget.view_offset.y = Base.Clamp(image_container.widget.view_offset.y - dy, 0, max_view_y);
-        //}
         image_container.widget.view_offset.x = image_container.widget.view_offset.x - dx;
         image_container.widget.view_offset.y = image_container.widget.view_offset.y - dy;
         UiState.drag_start.set(Ui_Cursor().position);
@@ -974,132 +1074,280 @@ export function DrawSpriteLoader(source_image) {
             sprite_loader_state.scaling = Math.max((image.scroll_y * 0.01) * UiState.delta_time + sprite_loader_state.scaling, 0.2);
         }
     }
-    // scan image and crop sprites
-    const count_x = Base.floor(source_image.width / default_sprite_size);
-    const count_y = Base.floor(source_image.height / default_sprite_size);
+    return [image_container, image_container_visible_size, image_container_position];
+}
+function SpriteLoaderLoadFromImage(source_image) {
+    const count_x = Base.Floor(source_image.width / sprite_loader_state.tile_width);
+    const count_y = Base.Floor(source_image.height / sprite_loader_state.tile_height);
     for (let y = 0; y < count_y; y += 1) {
         for (let x = 0; x < count_x; x += 1) {
-            const sprite_x = x * default_sprite_size;
-            const sprite_y = y * default_sprite_size;
-            if (FindSpriteBySourceCoords(sprite_x, sprite_y)) {
+            const sprite_x = x * sprite_loader_state.tile_width;
+            const sprite_y = y * sprite_loader_state.tile_height;
+            const from_image = FindSpriteBySourceCoords(sprite_x, sprite_y, sprite_loader_state.loaded_assets_from_image)[0];
+            const from_server = FindSpriteBySourceCoords(sprite_x, sprite_y, sprite_loader_state.loaded_assets_from_server)[0];
+            if (from_server) {
+                //@ts-ignore
+                sprite_loader_state.loaded_assets_from_image[y * count_x * count_y + x] = undefined;
                 continue;
             }
-            const sprite = Sprite.Sprite_new(Base.Rect(sprite_x, sprite_y, default_sprite_size, default_sprite_size), 0, 0);
-            console.log("push");
-            from_source.push(sprite);
-            altered_sprite_sizes.push([sprite.rect.width, sprite.rect.height]);
+            if (from_image) {
+                continue;
+            }
+            const sprite = Sprite.Sprite_new(Base.Rect(sprite_x, sprite_y, sprite_loader_state.tile_width, sprite_loader_state.tile_height), 0, 0, sprite_loader_state.loaded_assets_from_image_dummy_id--);
+            sprite_loader_state.loaded_assets_from_image.push(sprite);
         }
     }
-    const loaded_container_x = image_container_visible_size[0] + 30 + 30;
-    const loaded_container_y = 30;
-    PushGeneralBackgroundColor(Base.RGBA_FULL_TRANSPARENT);
-    PushBorderPx(1);
-    const loaded_container = Container("loaded-container", Base.Rect(loaded_container_x, loaded_container_y, 7 * SpriteLoaderSlotSize * Ui_InventorySpacingY, 600), UiDrawBorder | UiScrollViewY | UiScrollView | UiViewClamp | UiViewClampY, null, (from_source.length / 7 * SpriteLoaderSlotSize * Ui_InventorySpacingY) + from_source.length / 7);
+}
+function DrawSpriteLoaderAssetsFromImage(source_image, x, y) {
+    PushGeneralBackgroundColor(Base.RGBA_FULL_WHITE);
+    PushBorderPx(0);
+    PushRoundedCorners(1, 1, 1, 1);
+    const loaded_container = Container("loaded-container-image", Base.Rect(x, y, Base.Round(sprite_loader_state.visualizer_visible_cols * sprite_loader_state.tile_width * Ui_InventorySpacingX), 330), UiClickable | UiDrawBorder | UiScrollViewY | UiScrollView | UiViewClamp | UiViewClampY, null, (sprite_loader_state.loaded_assets_from_image.length / sprite_loader_state.visualizer_visible_cols *
+        sprite_loader_state.tile_height * Ui_InventorySpacingY) +
+        sprite_loader_state.loaded_assets_from_image.length / sprite_loader_state.visualizer_visible_cols);
+    PopRoundedCorners();
     PopBorderPx();
     PopGeneralBackgroundColor();
     const loaded_container_pos = PositionFromInteraction(loaded_container);
     const loaded_container_size = SizeFromInteraction(loaded_container);
-    const loaded_container_col = Base.floor(loaded_container_size[0] / SpriteLoaderSlotSize);
+    //const loaded_container_col	= Base.Floor(loaded_container_size[0] / sprite_loader_state.visualizer_cols);
     PushBorderPx(1);
     PushRoundedCorners(0, 0, 0, 0);
-    for (let x = 0; x < from_source.length; x++) {
-        const nx = loaded_container_pos[0] + Base.floor(x % loaded_container_col) * SpriteLoaderSlotSize * Ui_InventorySpacingX + loaded_container.widget.border_and_padding_increment.position.x;
-        const ny = loaded_container_pos[1] + Base.floor(x / loaded_container_col) * SpriteLoaderSlotSize * Ui_InventorySpacingY + loaded_container.widget.border_and_padding_increment.position.y - loaded_container.widget.view_offset.y;
-        const sprite = from_source[x];
-        if (ImageContainer("loaded-slot" + x, Base.Rect(nx, ny, SpriteLoaderSlotSize, SpriteLoaderSlotSize), source_image, UiClickable | UiImageCentered | UiDrawBorder, sprite.rect).clicked) {
+    PushBorderColor(Base.RGBA_FULL_BLACK);
+    for (let x = 0; x < sprite_loader_state.loaded_assets_from_image.length; x++) {
+        const sprite = sprite_loader_state.loaded_assets_from_image[x];
+        //const prev_sprite = sprite_loader_state.loaded_assets_from_image[x - 1];
+        if (!sprite)
+            continue;
+        const offset_x = Base.Floor(x % sprite_loader_state.visualizer_visible_cols) * (sprite_loader_state.tile_width);
+        const offset_y = Base.Floor(x / sprite_loader_state.visualizer_visible_cols) * (sprite_loader_state.tile_height);
+        //const offset_x = sprite.rect.position.x;
+        //const offset_y = sprite.rect.position.y;
+        const nx = loaded_container_pos[0] + offset_x * Ui_InventorySpacingX +
+            loaded_container.widget.border_and_padding_increment.width;
+        let ny = loaded_container_pos[1] + offset_y * Ui_InventorySpacingY +
+            loaded_container.widget.border_and_padding_increment.height -
+            loaded_container.widget.view_offset.y;
+        if (ny + sprite.rect.height < loaded_container_pos[1]) {
+            continue;
+        }
+        if (ny > loaded_container_pos[1] + loaded_container_size[1]) {
+            continue;
+        }
+        let height = sprite.rect.height;
+        if (ny < loaded_container_pos[1]) {
+            const offset = loaded_container_pos[1] - (ny);
+            height -= offset;
+            ny += offset;
+        }
+        else if (ny + sprite.rect.height + 10 > loaded_container_pos[1] + loaded_container_size[1]) {
+            const offset = (ny + sprite.rect.height + 10) -
+                (loaded_container_pos[1] + loaded_container_size[1]);
+            height -= offset;
+        }
+        if (height <= 0) {
+            continue;
+        }
+        if (ImageContainer("loaded-slot-image--" + x, Base.Rect(nx, ny, sprite.rect.width, height), source_image, UiClickable | UiDrawBorder, sprite.rect).clicked) {
             sprite_loader_state.selected_sprite = x;
         }
     }
+    PopBorderColor();
     PopRoundedCorners();
     PopBorderPx();
-    const selected_sprite = from_source[sprite_loader_state.selected_sprite];
-    const selected_sprite_offset_x = image_container_position[0] + selected_sprite.rect.position.x - image_container.widget.view_offset.x;
-    const selected_sprite_offset_y = image_container_position[1] + selected_sprite.rect.position.y - image_container.widget.view_offset.y;
-    //if ((selected_sprite_offset_x + selected_sprite.rect.width) > image_container_visible_size[0])
-    //{
-    //	image_container.widget.view_offset.x += 1000 * UiState.delta_time;
-    //}
-    //else if ((image_container_position[0] + selected_sprite.rect.position.x - selected_sprite.rect.width/2) < image_container.widget.view_offset.x)
-    //{
-    //	image_container.widget.view_offset.x -= 1000 * UiState.delta_time;
-    //}
-    //
-    //if ((selected_sprite_offset_y + selected_sprite.rect.height) > image_container_visible_size[1])
-    //{
-    //	image_container.widget.view_offset.y += 1000 * UiState.delta_time;
-    //}
-    //else if ((image_container_position[1] + selected_sprite.rect.position.y - selected_sprite.rect.height/2) < image_container.widget.view_offset.y)
-    //{
-    //	image_container.widget.view_offset.y -= 1000 * UiState.delta_time;
-    //}
-    const altered_size = altered_sprite_sizes[sprite_loader_state.selected_sprite];
-    if (selected_sprite_offset_x < image_container_visible_size[0] &&
-        selected_sprite_offset_y < image_container_visible_size[1]) {
-        PushRoundedCorners(0, 0, 0, 0);
-        PushTextColor(Base.RGBA_FULL_BLUE);
-        PushGeneralBackgroundColor(Base.RGBA(255, 255, 255, 0.4));
-        PushPadding(0, 0, 0, 0);
-        PushBorderPx(0);
-        Container(`selected-sprite-overlay#${altered_size[0]}-${altered_size[1]}`, Base.Rect(selected_sprite_offset_x, selected_sprite_offset_y, altered_size[0], altered_size[1]), UiTextCentered | UiTextCenteredX | UiTextCenteredY | UiDrawText);
-        PopGeneralBackgroundColor();
-        let new_width = altered_size[0];
-        let new_height = altered_size[1];
-        for (let i = 0; i < 4; i++) {
-            const x = Base.floor(i % 2);
-            const y = Base.floor(i / 2);
-            const offset_x = (x === 0 && x === y) ? 0 : (x === 1 ? 10 : 0);
-            const offset_y = (y === 1) ? 10 : 0;
-            const dragabble = CleanWidgetWithInteraction("selected-sprite-overlay-drag-area" + i, Base.Rect(selected_sprite_offset_x + (x * altered_size[0] - offset_x), selected_sprite_offset_y + (y * altered_size[1] - offset_y), 10, 10), UiClickable | UiDrawBackground | UiDragabble);
-            if (dragabble.dragging) {
-                const delta = Ui_DragDelta();
-                new_width += delta.x * x;
-                new_height += delta.y * y;
-                UiState.drag_start.set(Ui_Cursor().position);
+}
+function DrawSpriteLoaderAssetsFromServer(source_image, x, y) {
+    PushGeneralBackgroundColor(Base.RGBA_FULL_WHITE);
+    PushBorderPx(0);
+    PushRoundedCorners(1, 1, 1, 1);
+    const loaded_container = Container("loaded-container-server", Base.Rect(x, y, sprite_loader_state.visualizer_visible_cols * sprite_loader_state.tile_width * Ui_InventorySpacingX, 250), UiClickable | UiDrawBorder | UiScrollViewY | UiScrollView | UiViewClamp | UiViewClampY, null, (sprite_loader_state.loaded_assets_from_server.length / sprite_loader_state.visualizer_visible_cols *
+        sprite_loader_state.tile_height * Ui_InventorySpacingY) +
+        sprite_loader_state.loaded_assets_from_server.length / sprite_loader_state.visualizer_visible_cols);
+    PopRoundedCorners();
+    PopBorderPx();
+    PopGeneralBackgroundColor();
+    const loaded_container_pos = PositionFromInteraction(loaded_container);
+    const loaded_container_size = SizeFromInteraction(loaded_container);
+    PushBorderPx(1);
+    PushRoundedCorners(0, 0, 0, 0);
+    for (let sx = 0; sx < sprite_loader_state.loaded_assets_from_server.length; sx++) {
+        const sprite = sprite_loader_state.loaded_assets_from_server[sx];
+        if (!sprite)
+            continue;
+        const nx = loaded_container_pos[0] + Base.Floor(sx % sprite_loader_state.visualizer_visible_cols) * sprite.rect.width * Ui_InventorySpacingX;
+        let ny = loaded_container_pos[1] + Base.Floor(sx / sprite_loader_state.visualizer_visible_cols) * sprite.rect.height * Ui_InventorySpacingY
+            + loaded_container.widget.border_and_padding_increment.position.y - loaded_container.widget.view_offset.y;
+        if (ny + sprite.rect.height < loaded_container_pos[1]) {
+            continue;
+        }
+        if (ny > loaded_container_pos[1] + loaded_container_size[1]) {
+            continue;
+        }
+        let height = sprite.rect.height;
+        if (ny < loaded_container_pos[1]) {
+            const offset = loaded_container_pos[1] - (ny);
+            height -= offset;
+            ny += offset;
+        }
+        else if (ny + sprite.rect.height + 10 > loaded_container_pos[1] + loaded_container_size[1]) {
+            const offset = (ny + sprite.rect.height + 10) -
+                (loaded_container_pos[1] + loaded_container_size[1]);
+            height -= offset;
+        }
+        if (ImageContainer("loaded-slot-server--" + sx, Base.Rect(nx, ny, sprite.rect.width, height), source_image, UiClickable | UiDrawBorder, sprite.rect).clicked) {
+            sprite_loader_state.selected_sprite = sx;
+        }
+    }
+    PopRoundedCorners();
+    PopBorderPx();
+}
+export function DrawSpriteInit() {
+    Socket.send_packet(UiState.socket, Packet.packet_request_sprite_info_make("sprites"));
+}
+export function DrawSpriteLoader(source_image) {
+    if (UiState.input_instance.pressed(Input.KKey.KEY_F2)) {
+        sprite_loader_state.show = !sprite_loader_state.show;
+    }
+    if (sprite_loader_state.show) {
+        const [image_container, image_container_visible_size, image_container_position] = DrawSpriteLoaderImageContainer(source_image);
+        SpriteLoaderLoadFromImage(source_image);
+        DrawSpriteLoaderAssetsFromServer(source_image, image_container_visible_size[0] + image_container_position[0] + 30, image_container_position[1]);
+        DrawSpriteLoaderAssetsFromImage(source_image, image_container_visible_size[0] + image_container_position[0] + 30, image_container_position[1] + 260);
+        const selected_sprite = sprite_loader_state.loaded_assets_from_server[sprite_loader_state.selected_sprite] ||
+            sprite_loader_state.loaded_assets_from_image[sprite_loader_state.selected_sprite];
+        let [modified, midx] = FindSpriteBySourceCoords(selected_sprite.rect.position.x, selected_sprite.rect.position.y, sprite_loader_state.modified_assets);
+        if (modified) {
+            const mw = modified.rect.width;
+            const mh = modified.rect.height;
+            if (mw === selected_sprite.rect.width &&
+                mh === selected_sprite.rect.height &&
+                modified.description.value === selected_sprite.description.value &&
+                modified.name.value === selected_sprite.name.value) {
+                sprite_loader_state.modified_assets.splice(midx, 1);
             }
         }
-        altered_size[0] = new_width;
-        altered_size[1] = new_height;
+        if (!modified) {
+            modified = Sprite.Sprite_new(Base.Rect(selected_sprite.rect.position.x, selected_sprite.rect.position.y, selected_sprite.rect.width, selected_sprite.rect.height), 0, 0, selected_sprite.id, selected_sprite.description.value, selected_sprite.name.value, selected_sprite.created_at);
+        }
+        let selected_sprite_offset_x = (image_container_position[0] + modified.rect.position.x) - image_container.widget.view_offset.x;
+        let selected_sprite_offset_y = (image_container_position[1] + modified.rect.position.y) - image_container.widget.view_offset.y;
+        //
+        //if ((selected_sprite_offset_x + selected_sprite.rect.width) > image_container_visible_size[0])
+        //{
+        //	image_container.widget.view_offset.x += 1000 * UiState.delta_time;
+        //}
+        //else if ((image_container_position[0] + selected_sprite.rect.position.x - selected_sprite.rect.width/2) < image_container.widget.view_offset.x)
+        //{
+        //	image_container.widget.view_offset.x -= 1000 * UiState.delta_time;
+        //}
+        //
+        //if ((selected_sprite_offset_y + selected_sprite.rect.height) > image_container_visible_size[1])
+        //{
+        //	image_container.widget.view_offset.y += 1000 * UiState.delta_time;
+        //}
+        //else if ((image_container_position[1] + selected_sprite.rect.position.y - selected_sprite.rect.height/2) < image_container.widget.view_offset.y)
+        //{
+        //	image_container.widget.view_offset.y -= 1000 * UiState.delta_time;
+        //}
+        if (selected_sprite_offset_x + modified.rect.width > image_container_position[0] &&
+            selected_sprite_offset_x - modified.rect.width / 2 < image_container_visible_size[0] &&
+            selected_sprite_offset_y - modified.rect.width / 2 < image_container_visible_size[1] &&
+            selected_sprite_offset_y + modified.rect.height > image_container_position[1]) {
+            PushRoundedCorners(0, 0, 0, 0);
+            PushTextColor(Base.RGBA_FULL_BLUE);
+            PushGeneralBackgroundColor(Base.RGBA(155, 155, 155, 0.4));
+            PushPadding(0, 0, 0, 0);
+            PushBorderPx(0);
+            Container(`--selected-sprite-overlay#${modified.rect.width}-${modified.rect.height}`, Base.Rect(selected_sprite_offset_x, selected_sprite_offset_y, modified.rect.width, modified.rect.height), UiTextCentered | UiTextCenteredX | UiTextCenteredY | UiDrawText);
+            PopGeneralBackgroundColor();
+            const dragabble_y = CleanWidgetWithInteraction("selected-sprite-overlay-drag-area--y", Base.Rect(selected_sprite_offset_x + modified.rect.width / 2 - 10, selected_sprite_offset_y + modified.rect.height - 10, 20, 10), UiClickable | UiDragabble | UiDrawBackground);
+            if (dragabble_y.dragging) {
+                const delta = Ui_DragDelta();
+                modified.rect.height = Base.Clamp(modified.rect.height + delta.y, 0, 1232);
+                UiState.drag_start.set(Ui_Cursor().position);
+            }
+            const dragabble_x = CleanWidgetWithInteraction("selected-sprite-overlax-drag-area--x", Base.Rect(selected_sprite_offset_x + modified.rect.width - 10, selected_sprite_offset_y + (modified.rect.height / 2) - 10, 10, 20), UiClickable | UiDrawBackground | UiDragabble);
+            if (dragabble_x.dragging) {
+                const delta = Ui_DragDelta();
+                modified.rect.width = Base.Clamp(modified.rect.width + delta.x, 0, 1232);
+                UiState.drag_start.set(Ui_Cursor().position);
+            }
+            PopBorderPx();
+            PopPadding();
+            PopTextColor();
+            PopRoundedCorners();
+        }
+        PushRoundedCorners(1, 1, 1, 1);
+        PushGeneralBackgroundColor(Base.RGBA_FULL_TRANSPARENT);
+        PushTextColor(Base.RGBA_FULL_BLACK);
+        PushPadding(2, 2, 4, 4);
+        PushBorderPx(1);
+        PushBorderColor(Base.RGBA(77, 77, 77));
+        const name_input = TextInput(modified.name, "selected-sprite-overlay-name-input", Base.Rect(image_container_position[0], image_container_position[1] + image_container_visible_size[1] + 5, 200, 30), UiDrawBorder);
+        PopBorderColor();
         PopBorderPx();
         PopPadding();
         PopTextColor();
+        PopGeneralBackgroundColor();
         PopRoundedCorners();
+        PushRoundedCorners(1, 1, 1, 1);
+        PushGeneralBackgroundColor(Base.RGBA_FULL_TRANSPARENT);
+        PushTextColor(Base.RGBA_FULL_BLACK);
+        PushPadding(2, 2, 4, 4);
+        PushBorderPx(1);
+        PushBorderColor(Base.RGBA(77, 77, 77));
+        TextInput(modified.description, "selected-sprite-overlay-description-input", Base.Rect(image_container_position[0] + 200 + name_input.widget.border_and_padding_increment.position.x + name_input.widget.border_and_padding_increment.width, image_container_position[1] + image_container_visible_size[1] + 5, 250, 30), UiDrawBorder);
+        PopBorderColor();
+        PopBorderPx();
+        PopPadding();
+        PopTextColor();
+        PopGeneralBackgroundColor();
+        PopRoundedCorners();
+        PushRoundedCorners(1, 1, 1, 1);
+        PushGeneralBackgroundColor(Base.RGBA(33, 33, 33));
+        PushTextColor(Base.RGBA_FULL_WHITE);
+        PushPadding(2, 2, 4, 4);
+        PushBorderPx(1);
+        PushBorderColor(Base.RGBA(99, 99, 99));
+        if (sprite_loader_state.modified_assets.length > 0) {
+            if (Button("selected-sprite-overlay-description-save-btn#Save", Base.Rect(image_container_position[0] + 200 + name_input.widget.border_and_padding_increment.position.x
+                + name_input.widget.border_and_padding_increment.width + 270, image_container_position[1] + image_container_visible_size[1] + 5, 100, 30), UiDrawBorder).clicked) {
+                window.requestIdleCallback(() => {
+                    SpriteLoaderSave();
+                });
+            }
+            if (Button("selected-sprite-overlay-description-restore-btn#Restore All", Base.Rect(image_container_position[0] + 200 + name_input.widget.border_and_padding_increment.position.x
+                + name_input.widget.border_and_padding_increment.width + 270 + 130, image_container_position[1] + image_container_visible_size[1] + 5, 100, 30), UiDrawBorder).clicked) {
+                sprite_loader_state.modified_assets = [];
+                modified = selected_sprite;
+            }
+        }
+        PopBorderColor();
+        PopBorderPx();
+        PopPadding();
+        PopTextColor();
+        PopGeneralBackgroundColor();
+        PopRoundedCorners();
+        const mw = modified.rect.width;
+        const mh = modified.rect.height;
+        if (mw !== selected_sprite.rect.width ||
+            mh !== selected_sprite.rect.height ||
+            modified.description.value !== selected_sprite.description.value ||
+            modified.name.value !== selected_sprite.name.value) {
+            if (!FindSpriteBySourceCoords(modified.rect.position.x, modified.rect.position.y, sprite_loader_state.modified_assets)[0]) {
+                const [_, idx] = FindSpriteById(modified.id, sprite_loader_state.loaded_assets_from_image);
+                sprite_loader_state.modified_assets.push(modified);
+                let x = modified.rect.position.x;
+                let y = modified.rect.position.x;
+                const end_x = x + modified.rect.width;
+                const end_y = y + modified.rect.height;
+                const srow = idx % sprite_loader_state.visualizer_visible_cols;
+                const scol = idx / sprite_loader_state.visualizer_visible_cols;
+                for (let i = idx; i < sprite_loader_state.loaded_assets_from_image.length; i++) {
+                }
+            }
+        }
     }
-    PushRoundedCorners(3, 3, 3, 3);
-    PushGeneralBackgroundColor(Base.RGBA_FULL_TRANSPARENT);
-    PushTextColor(Base.RGBA_FULL_BLACK);
-    PushPadding(2, 2, 4, 4);
-    PushBorderPx(1);
-    const name_input = TextInput(selected_sprite.name, "selected-sprite-overlay-name-input", Base.Rect(image_container_position[0], image_container_position[1] + image_container_visible_size[1] + 5, 200, 30), UiDrawBorder);
-    PopBorderPx();
-    PopPadding();
-    PopTextColor();
-    PopGeneralBackgroundColor();
-    PopRoundedCorners();
-    PushRoundedCorners(3, 3, 3, 3);
-    PushGeneralBackgroundColor(Base.RGBA_FULL_TRANSPARENT);
-    PushTextColor(Base.RGBA_FULL_BLACK);
-    PushPadding(2, 2, 4, 4);
-    PushBorderPx(1);
-    TextInput(selected_sprite.description, "selected-sprite-overlay-description-input", Base.Rect(image_container_position[0] + 200 + name_input.widget.border_and_padding_increment.position.x + name_input.widget.border_and_padding_increment.width, image_container_position[1] + image_container_visible_size[1] + 5, 250, 30), UiDrawBorder);
-    PopBorderPx();
-    PopPadding();
-    PopTextColor();
-    PopGeneralBackgroundColor();
-    PopRoundedCorners();
-    PushRoundedCorners(3, 3, 3, 3);
-    PushGeneralBackgroundColor(Base.RGBA_FULL_TRANSPARENT);
-    PushTextColor(Base.RGBA_FULL_BLACK);
-    PushPadding(2, 2, 4, 4);
-    PushBorderPx(1);
-    if (Button("selected-sprite-overlay-description-save-btn#Save", Base.Rect(image_container_position[0] + 200 + name_input.widget.border_and_padding_increment.position.x
-        + name_input.widget.border_and_padding_increment.width + 270, image_container_position[1] + image_container_visible_size[1] + 5, 100, 30), UiDrawBorder).clicked) {
-        Socket.send_packet(UiState.socket, Packet.PingPacket);
-    }
-    PopBorderPx();
-    PopPadding();
-    PopTextColor();
-    PopGeneralBackgroundColor();
-    PopRoundedCorners();
 }
 const debug_info_state = {
     show: false
@@ -1147,7 +1395,7 @@ export function DrawDebugInfo() {
         }
         CleanWidgetWithInteraction(
         //@ts-ignore
-        `debug-info--dt#delta time: ${Base.floor(UiState.delta_time * 1000, 2)} ms, ${Base.Fixed(1 / UiState.delta_time, 1)} fps`, Base.Rect(container_pos[0], container_pos[1] + text_size[1] + ((i + 1) * 20), 0, 0), UiDrawText | UiResizeToContent);
+        `debug-info--dt#delta time: ${Base.Floor(UiState.delta_time * 1000, 2)} ms, ${Base.Fixed(1 / UiState.delta_time, 1)} fps`, Base.Rect(container_pos[0], container_pos[1] + text_size[1] + ((i + 1) * 20), 0, 0), UiDrawText | UiResizeToContent);
         CleanWidgetWithInteraction(
         //@ts-ignore
         `debug-info--connetion-info#connection: ${Socket.get_connection_state_string(UiState.socket)}`, Base.Rect(container_pos[0], container_pos[1] + text_size[1] + ((i + 2) * 20), 0, 0), UiDrawText | UiResizeToContent);

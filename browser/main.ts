@@ -3,6 +3,7 @@ import * as Base		from "./base.js";
 import * as Input		from "./input.js";
 import * as Ui			from "./ui.js";
 import * as WS			from "./socket.js";
+import * as Packet	from "./packet.js";
 
 (async () => {
 	const canvas = document.getElementById("canvas") as HTMLCanvasElement;
@@ -36,7 +37,13 @@ import * as WS			from "./socket.js";
 	Ui.SetInputInstance(ipt);
 
 	const socket = WS.connect();
-	Ui.SetSocket(socket);
+	Ui.Init(socket);
+
+	WS.add_listener(Packet.PacketKind.PacketKind_Pong, function (packet: Packet.Packet) {
+		setTimeout(() => {
+			WS.send_packet(socket, Packet.PingPacket);
+		}, 10000);
+	});
 
 	function draw(dt: number)
 	{
@@ -52,7 +59,7 @@ import * as WS			from "./socket.js";
 		//}
 		Ui.DrawSpriteLoader(sprites[1] as ImageBitmap);
 		Ui.DrawDebugInfo();
-		//Ui.DrawInventory(sprites[0] as ImageBitmap[])
+		Ui.DrawInventory(sprites[0] as ImageBitmap[])
 		Ui.FrameEnd();
 	}
 

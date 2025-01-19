@@ -279,14 +279,14 @@ export function assert(p: boolean, msg: string = "")
 	}
 }
 
-export function floor(n: number)
+export function Floor(n: number)
 {
 	return (n >> 0);
 }
 
-export function round(n: number)
+export function Round(n: number)
 {
-	return (floor(n + 0.5));
+	return (Floor(n + 0.5));
 }
 
 export function Clamp(value: number, min: number, max: number): number {
@@ -379,7 +379,7 @@ export async function load_fonts()
 }
 export function Fixed(float: number, places: number)
 {
-	return (Number((round(float*(10*places))/(10*places)).toFixed(places)))
+	return (Number((Round(float*(10*places))/(10*places)).toFixed(places)))
 }
 
 export type Pair<T, U = T> = [T, U];

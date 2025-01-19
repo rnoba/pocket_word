@@ -1,7 +1,5 @@
-import * as Base from "./base.js";
-
-const SERVER_ID			= 1;
-const ANONYMOUS_ID	= 0;
+export const SERVER_ID			= 1;
+export const ANONYMOUS_ID	= 0;
 
 function write_u64(view: DataView, offset: number, value: number)
 {
@@ -10,14 +8,6 @@ function write_u64(view: DataView, offset: number, value: number)
 	view.setUint32(offset, low, true);
 	view.setUint32(offset + 4, high, true);
 	return offset + 8;
-}
-
-function get_u64(view: DataView, offset: number)
-{
-	const low		= view.getUint32(offset, true); 
-	const high	= view.getUint32(offset + 4, true); 
-	const value = (high * 2 ** 32) + low;
-	return value;
 }
 
 function write_u32(view: DataView, offset: number, value: number)
@@ -65,38 +55,87 @@ function write_i8(view: DataView, offset: number, value: number)
 	return offset + 1;
 }
 
-function read_s8(view: DataView, offset: number): string
-{
-	let r = "";
-	let byte: number = 0;
-	for (let i = 0; (byte = view.getUint8(offset + i)); i++)
-	{
-		if (byte === 0)
-		{
-			break;
-		}
-		r += String.fromCharCode(byte);
-	}
-	return r;
-}
-
-function write_s8(view: DataView, offset: number, str: string, max_size = 16) {
+function write_s8(view: DataView, offset: number, str: string) {
 	let i = 0;
 	for (; i < str.length; i += 1)
 	{
 		offset = write_u8(view, offset, str.charCodeAt(i));
 	}
-	for (; i < max_size; i += 1)
-	{
-		offset = write_u8(view, offset, 0); 
-	}
 	return offset;
 }
 
-enum PacketKind {
-	PacketKind_LoadAsset	= 1 << 0,
-	PacketKind_Ping				= 1 << 1,
-	PacketKind_Pong				= 1 << 2
+function read_u32(view: DataView, offset: number)
+{
+	const u32 = view.getUint32(offset, true);
+	return [u32, offset + 4];
+}
+
+function read_u16(view: DataView, offset: number)
+{
+	const u16 = view.getUint16(offset, true);
+	return [u16, offset + 2];
+}
+
+function read_u8(view: DataView, offset: number)
+{
+	const byte = view.getUint8(offset);
+	return [byte, offset + 1];
+}
+
+function read_i64(view: DataView, offset: number)
+{
+	const low		= view.getInt32(offset, true); 
+	const high	= view.getInt32(offset + 4, true); 
+	const value = (high * 2 ** 32) + low;
+	return [value, offset + 8];
+}
+
+function read_i32(view: DataView, offset: number)
+{
+	const i32 = view.getInt32(offset, true);
+	return [i32, offset + 4];
+}
+
+function read_i16(view: DataView, offset: number)
+{
+	const i16 = view.getInt16(offset, true);
+	return [i16, offset + 2];
+}
+
+function read_i8(view: DataView, offset: number)
+{
+	const byte = view.getInt8(offset);
+	return [byte, offset + 1];
+}
+
+function read_s8(view: DataView, offset: number, length: number): [string, number]
+{
+	let r = "";
+	let byte: number = 0;
+
+	let i = 0;
+	for (i; i < length; i++)
+	{
+		byte = view.getUint8(offset + i);
+		r += String.fromCharCode(byte);
+	}
+	return [r, offset + i];
+}
+
+function read_u64(view: DataView, offset: number): [number, number]
+{
+	const low		= view.getUint32(offset, true); 
+	const high	= view.getUint32(offset + 4, true); 
+	const value = (high * 2 ** 32) + low;
+
+	return [value, offset + 8];
+}
+
+export enum PacketKind {
+	PacketKind_SpriteInfo					= 1 << 0,
+	PacketKind_Ping								= 1 << 1,
+	PacketKind_Pong								= 1 << 2,
+	PacketKind_RequestSpriteInfo	= 1 << 3,
 }
 
 enum AgentKind {
@@ -111,20 +150,47 @@ type Agent = {
 	id:		number;
 	// u32
 	kind: AgentKind;
-	// s8 -- max size 16
+	// string len 
+	length: number;
 	name: string;
 }
-const PACKET_AGENT_PAYLOAD_SIZE = 28;
+
+function agent_size(agent: Agent) {
+	return 16 + agent.length;
+}
 
 type PacketPing = {
+	length: number;
 	msg:	string;
 }
-const PACKET_PING_PAYLOAD_SIZE = 16;
 
 type PacketPong = {
+	length: number;
 	msg:	string;
 }
-const PACKET_PONG_PAYLOAD_SIZE = 16;
+
+const PingPongSize = 9;
+
+type PacketRequestSpriteInfo = {
+	length:				number;
+	source_file:	string;
+}
+
+export type PacketSpriteInfo = {
+	id:				number;
+	offset_x: number;
+	offset_y: number;
+	width:		number;
+	height:		number;
+	source_file_length: number;
+	source_file:				string;
+	created_at_length:	number;
+	created_at:					string;
+	descrition_length:	number;
+	descrition:					string;
+	name_length:				number;
+	name:								string;
+}
 
 export type Packet = {
 	// u32
@@ -133,10 +199,8 @@ export type Packet = {
 	// the packet in the server 
 	kind: number;
 	agent: Agent;
-	payload: PacketPong | PacketPing;
+	payload: PacketRequestSpriteInfo | PacketSpriteInfo | PacketPong | PacketPing;
 }
-
-const PACKET_SIZE = 8 + PACKET_AGENT_PAYLOAD_SIZE;
 
 // id 0 -> reserverd for anonymous agents 
 // id 1 -> reserverd for server	agent
@@ -145,20 +209,53 @@ export function agent_anonymous_make(): Agent
 	return {
 		name: "anonymous",
 		kind: AgentKind.AgentKind_Anonymous,
-		id: ANONYMOUS_ID
+		id: ANONYMOUS_ID,
+		length: 9
 	}
 }
 
-export function agent_deserialize(dv: DataView, offset = 0): Agent 
+export function packet_ping_make()
 {
-	const id	 = get_u64(dv, offset); 
-	const kind = dv.getUint32(offset + 8, true); 
-	const name = read_s8(dv, offset + 12); 
-	return {
-		id,
-		kind,
-		name
-	}
+	const packet: Packet = {} as Packet;
+	packet.agent = agent_anonymous_make();
+	packet.kind = PacketKind.PacketKind_Ping;
+	packet.payload = {
+		msg: "ping",
+		length: 4
+	} as PacketPing
+	packet.size = 8 + agent_size(packet.agent) + PingPongSize;
+	return (packet);
+}
+
+export function packet_pong_make()
+{
+	const packet: Packet = {} as Packet;
+	packet.agent = agent_anonymous_make();
+	packet.kind = PacketKind.PacketKind_Ping;
+	packet.payload = {
+		msg: "pong",
+		length: 4
+	} as PacketPing
+	packet.size = 8 + agent_size(packet.agent) + PingPongSize;
+	return (packet);
+}
+
+export const PingPacket = packet_ping_make(); 
+export const PongPacket = packet_pong_make(); 
+
+export function packet_request_sprite_info_make(source_file: string)
+{
+	const packet: Packet = {} as Packet;
+
+	packet.agent		= agent_anonymous_make();
+	packet.kind			= PacketKind.PacketKind_RequestSpriteInfo;
+	packet.payload	= {
+		source_file,
+		length: source_file.length
+	} as PacketRequestSpriteInfo;
+
+	packet.size = 8 + agent_size(packet.agent) + 4 + source_file.length; 
+	return (packet);
 }
 
 // order ->
@@ -175,12 +272,37 @@ export function packet_serialize(packet: Packet): ArrayBuffer
 	offset			= write_u32(dv, offset, packet.kind);
 	offset			= write_u64(dv, offset, packet.agent.id);
 	offset			= write_u32(dv, offset, packet.agent.kind);
-	offset			= write_s8(dv, offset, packet.agent.name);
+	offset			= write_u32(dv, offset, packet.agent.length);
+	offset			= write_s8(dv,	offset, packet.agent.name);
+
 	switch (packet.kind)
 	{
 		case PacketKind.PacketKind_Pong:
 		case PacketKind.PacketKind_Ping: {
-			write_s8(dv, offset, packet.payload.msg);
+			const payload = packet.payload as PacketPong;
+			offset = write_u32(dv, offset, payload.length);
+			write_s8(dv, offset, payload.msg);
+		} break;
+		case PacketKind.PacketKind_RequestSpriteInfo: {
+			const payload = (packet.payload) as PacketRequestSpriteInfo;
+			offset = write_u32(dv, offset, payload.length);
+			write_s8(dv, offset, payload.source_file);
+		} break;
+		case PacketKind.PacketKind_SpriteInfo: {
+			const payload = (packet.payload) as PacketSpriteInfo;
+			offset = write_u64(dv, offset, payload.id);
+			offset = write_i32(dv, offset, payload.offset_x);
+			offset = write_i32(dv, offset, payload.offset_y);
+			offset = write_i32(dv, offset, payload.width);
+			offset = write_i32(dv, offset, payload.height);
+			offset = write_u32(dv, offset, payload.source_file_length);
+			offset = write_s8(dv, offset, payload.source_file);
+			offset = write_u32(dv, offset, payload.created_at_length);
+			offset = write_s8(dv, offset, payload.created_at);
+			offset = write_u32(dv, offset, payload.descrition_length);
+			offset = write_s8(dv, offset, payload.descrition);
+			offset = write_u32(dv, offset, payload.name_length);
+			write_s8(dv, offset, payload.name);
 		} break;
 		default: {
 		} break;
@@ -189,38 +311,80 @@ export function packet_serialize(packet: Packet): ArrayBuffer
 	return (dv.buffer);
 }
 
-export function packet_pong_deserialize(data: DataView, offset = 0): PacketPong 
+export function agent_deserialize(dv: DataView, offset = 0): Agent 
 {
-	const msg = read_s8(data, offset);
-	return { msg }
+
+	let [id,			offseta]	= read_u64(dv,	offset); 
+	let [kind,		offsetb]	= read_u32(dv,	offseta); 
+	let [length,	offsetc]	= read_u32(dv,	offsetb); 
+	let [name,		_]				= read_s8(dv,		offsetc, length); 
+
+	return {
+		id,
+		kind,
+		name,
+		length
+	}
 }
 
-export function packet_ping_make()
+export function packet_pongping_deserialize(dv: DataView, offset = 0): PacketPong 
 {
-	const packet: Packet = {} as Packet;
-	packet.size = PACKET_SIZE + PACKET_PING_PAYLOAD_SIZE;
-	packet.agent = agent_anonymous_make();
-	packet.kind = PacketKind.PacketKind_Ping;
-	packet.payload = {
-		msg: "ping",
-	} as PacketPing
-	return (packet);
+	const [length, offseta]	= read_u32(dv, offset); 
+	const [msg,		_]				= read_s8(dv, offseta, length);
+	return { msg, length };
 }
 
-export const PingPacket = packet_ping_make(); 
+export function packet_sprite_info_deserialize(dv: DataView, offset = 0): PacketSpriteInfo
+{
+	// TODO(rnoba): make this better ;-;
+	const [id, offseta]						= read_u64(dv, offset); 
+	const [offset_x, offsetb]			= read_u32(dv, offseta); 
+	const [offset_y, offsetc]			= read_u32(dv, offsetb); 
+	const [width, offsetd]				= read_u32(dv, offsetc); 
+	const [height, offsete]				= read_u32(dv, offsetd); 
+	const [source_file_len, offsetf]		= read_u32(dv, offsete); 
+	const [source_file, offsetg]				= read_s8(dv, offsetf, source_file_len); 
+	const [created_at_len, offseth]			= read_u32(dv, offsetg);
+	const [created_at, offseti]					= read_s8(dv, offseth, created_at_len);
+	const [descrition_len, offsetj]			= read_u32(dv, offseti);
+	const [descrition, offsetk]					= read_s8(dv, offsetj, descrition_len);
+	const [name_len, offsetl]						= read_u32(dv, offsetk);
+	const [name, _]											= read_s8(dv, offsetl, name_len);
+
+	return {
+		id,
+		offset_x,
+		offset_y,
+		width,
+		height,
+		source_file_length: source_file_len,
+		source_file,
+		created_at_length: created_at_len,
+		created_at,
+		descrition_length: descrition_len,
+		descrition,
+		name_length: name_len,
+		name: name
+	}
+}
 
 export function packet_deserialize(data: ArrayBuffer): Packet
 {
 	const dv = new DataView(data);
 
 	const packet: Packet = {} as Packet;
-	packet.size	= dv.getUint32(0, true);
-	packet.kind	= dv.getUint32(4, true);
-	packet.agent = agent_deserialize(dv, 8); 
+	packet.size		= dv.getUint32(0, true);
+	packet.kind		= dv.getUint32(4, true);
+	packet.agent	= agent_deserialize(dv, 8); 
 	switch (packet.kind)
 	{
+		case PacketKind.PacketKind_Ping:
 		case PacketKind.PacketKind_Pong: {
-			packet.payload = packet_pong_deserialize(dv, 8+PACKET_AGENT_PAYLOAD_SIZE);
+			packet.payload = packet_pongping_deserialize(dv, 8+agent_size(packet.agent));
+		} break;
+		case PacketKind.PacketKind_SpriteInfo:
+		{
+			packet.payload = packet_sprite_info_deserialize(dv, 8+agent_size(packet.agent));
 		} break;
 		default: {
 		} break;

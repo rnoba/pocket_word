@@ -2,10 +2,10 @@ import * as Base from "./base.js";
 
 export type SpriteId = bigint;
 
+export let SPRITES: ImageBitmap | null = null;
+
 export type Sprite = {
-	id: SpriteId;
-	// sprite start coords at source image
-	// ans size at source image
+	id: number;
 	rect: Base.Rect;
 	// sprite offset when being draw
 	offset_x: number; 
@@ -13,17 +13,19 @@ export type Sprite = {
 
 	description: { value: string };
 	name: { value: string };
+	created_at: string;
 }
 
 export function Sprite_new(
 	rect: Base.Rect,
 	offset_x: number, 
 	offset_y: number, 
+	id: number = 0,
 	description: string = "<DESCRIPTION>",
 	name: string = "<NAME>",
+	created_at: string = ""
 )
 {
-	const id = Base.hash_string(name + description + Math.random());
 	const sprite: Sprite = {
 		id,
 		rect,
@@ -34,7 +36,8 @@ export function Sprite_new(
 		},
 		name: {
 			value: name
-		}
+		},
+		created_at
 	}
 	return (sprite);
 }
@@ -68,8 +71,8 @@ async function create_transparent_bitmap(original: ImageBitmap, opacity: number)
 
 async function collect_sprites(size: number, image: HTMLImageElement): Promise<Array<ImageBitmap>>
 {
-	const count_x = Base.floor(image.width / size);
-	const count_y = Base.floor(image.height	/ size);
+	const count_x = Base.Floor(image.width / size);
+	const count_y = Base.Floor(image.height	/ size);
 
 	const promises: Array<Promise<ImageBitmap>> = [];
 	for (let y = 0; y < count_y; y += 1)
@@ -96,7 +99,8 @@ export async function load()
 	const source_bitmap_original_test = await createImageBitmap(image_test, 0, 0, image_test.width, image_test.height);
 	const source_bitmap_original_test_2 = await createImageBitmap(image_test_2, 0, 0, image_test_2.width, image_test_2.height);
 	const source_bitmap_original = await createImageBitmap(image, 0, 0, image.width, image.height);
-	return [sprites, source_bitmap_original_test];
+	SPRITES = source_bitmap_original;
+	return [sprites, source_bitmap_original];
 }
 
 export function draw_from_image(

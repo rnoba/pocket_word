@@ -204,11 +204,11 @@ export function assert(p, msg = "") {
         throw new Error(`assertion failed ${msg}`);
     }
 }
-export function floor(n) {
+export function Floor(n) {
     return (n >> 0);
 }
-export function round(n) {
-    return (floor(n + 0.5));
+export function Round(n) {
+    return (Floor(n + 0.5));
 }
 export function Clamp(value, min, max) {
     return (Math.min(Math.max(value, min), max));
@@ -273,5 +273,5 @@ export async function load_fonts() {
     }
 }
 export function Fixed(float, places) {
-    return (Number((round(float * (10 * places)) / (10 * places)).toFixed(places)));
+    return (Number((Round(float * (10 * places)) / (10 * places)).toFixed(places)));
 }
