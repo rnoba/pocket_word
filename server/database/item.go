@@ -55,7 +55,7 @@ func CreateItem(
 };
 
 type Item struct {
-	Id					int64;
+	Id					uint64;
 	OffsetX			int32;
 	OffsetY			int32;
 	Width				int32;

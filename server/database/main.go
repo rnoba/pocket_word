@@ -72,7 +72,7 @@ func CreateTables() {
 			width				INT,
 			height			INT,
 			created_at	TIMESTAMPTZ DEFAULT now()
-		)`,
+		);`,
 	};
 
 	for _, query := range queries{
