@@ -348,7 +348,6 @@ func Deserialize(data []byte) (*Packet, error) {
 			description_len,	err_c := deserialize_string(buffer, &packet_payload.Description);
 			title_len,				err_d := deserialize_string(buffer, &packet_payload.Name);
 
-			// one error discard packet
 			if err := errors.Join(err_a, err_b, err_c, err_d); err != nil {
 				return nil, err;
 			}
