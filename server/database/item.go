@@ -14,7 +14,7 @@ func CreateItem(
 	source_file string,
 	offset_x int32, offset_y int32,
 	width int32, height int32,
-	description string, title string) error {
+	description string, name string) error {
 
 	if pool == nil {
 		return fmt.Errorf("Pool was not initialized");
@@ -37,11 +37,11 @@ func CreateItem(
 
 	_, err = tx.Exec(
 		ctx,
-		`INSERT INTO items (source_file, offset_x, offset_y, width, height, description, title) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		`INSERT INTO items (source_file, offset_x, offset_y, width, height, description, name) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
 		source_file,
 		offset_x, offset_y,
 		width, height,
-		description, title,
+		description, name,
 	);
 
 	if err != nil {

@@ -2,12 +2,13 @@ package database
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 var Pool *pgxpool.Pool;
@@ -37,6 +38,34 @@ func DatabasePoolDeinit() {
 	log.Println("Database pool closed!");
 }
 
+func ExecuteWithTransaction(ctx context.Context, pool *pgxpool.Pool, fn func(tx pgx.Tx) error) error {
+	tx, err := pool.Begin(ctx);
+	if err != nil {
+		return fmt.Errorf("Failed to begin transaction: %v", err);
+	}
+
+	defer func() {
+		if p := recover(); p != nil || err != nil {
+			_ = tx.Rollback(ctx);
+			if p != nil {
+				panic(p);
+			}
+		}
+	}();
+
+	err = fn(tx);
+	if err != nil {
+		return fmt.Errorf("Error during transaction: %v", err);
+	}
+
+	err = tx.Commit(ctx);
+	if err != nil {
+		return fmt.Errorf("Failed to commit transaction: %v", err)
+	}
+
+	return nil;
+}
+
 func CreateTables() {
 	dsn				:= os.Getenv("DATABASE_URL");
 	conn, err := pgx.Connect(context.Background(), dsn); 
@@ -49,7 +78,7 @@ func CreateTables() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second);
 	defer cancel();
 
-	tx, err := conn.Begin(ctx)
+	tx, err := conn.Begin(ctx);
 	if err != nil {
 		log.Fatalf("Failed to begin transaction: %v", err);
 	}
@@ -72,6 +101,19 @@ func CreateTables() {
 			width				INT,
 			height			INT,
 			created_at	TIMESTAMPTZ DEFAULT now()
+		);`,
+		`CREATE TABLE IF NOT EXISTS users (
+			id SERIAL			PRIMARY KEY,
+			username			varchar(255) UNIQUE,
+			password_hash BYTEA NOT NULL,
+			is_admin			BOOLEAN NOT NULL DEFAULT FALSE,
+			created_at		TIMESTAMPTZ DEFAULT now()
+		);`,
+		`ALTER SEQUENCE users_id_seq RESTART WITH 2;`,
+		`CREATE TABLE IF NOT EXISTS user_inventory (
+			user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			data BYTEA NOT NULL,
+			PRIMARY KEY (user_id)
 		);`,
 	};
 

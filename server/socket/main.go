@@ -22,6 +22,9 @@ const (
 	PacketKind_Ping								= 1 << 1
 	PacketKind_Pong								= 1 << 2
 	PacketKind_RequestSpriteInfo	= 1 << 3
+	PacketKind_AuthenticationClient	= 1 << 4
+	PacketKind_Ok										= 1 << 5
+	PacketKind_AuthenticationServer	= 1 << 6
 )
 
 const (
@@ -64,11 +67,33 @@ type PacketSpriteInfo struct {
 	Name					string;
 }
 
+// very safe
+type PacketAuthenticationClient struct {
+	UsernameLen uint32;
+	Username string;
+	PasswordLen uint32;
+	PasswordString string;
+}
+
+type PacketAuthenticationServer struct {
+	UserId uint64;
+	IsAdmin uint8;
+	UsernameLen uint32;
+	Username string;
+	CreatedAtLen uint32;
+	CreatedAt string;
+}
+
 type Packet struct {
 	Size	uint32
 	Kind	uint32
 	Agent Agent
 	Payload interface{}
+}
+
+type PacketOk struct {
+	ok uint8;
+	ctx uint32;
 }
 
 func AgentAnonymousMake() Agent {
@@ -91,6 +116,22 @@ func AgentServerMake() Agent {
 	return (agent);
 }
 
+func PacketOkMake(ok uint8, ctx uint32) (*Packet, error) {
+	packet := &Packet{
+		Size:   0,
+		Kind:   PacketKind_Ok,
+		Agent:  AgentServerMake(),
+		Payload: PacketOk{
+			ok: ok,
+			ctx: ctx,
+		},
+	}
+	packet.Size = packet.Len(); 
+	if packet.Size == 0 {
+		return nil, fmt.Errorf("Could not make packet");
+	}
+	return packet, nil;
+}
 func PacketPongMake() (*Packet, error) {
 	packet := &Packet{
 		Size:   0,
@@ -99,6 +140,33 @@ func PacketPongMake() (*Packet, error) {
 		Payload: PacketPingPong{
 			Data: "PONG",
 			DataLen: 4,
+		},
+	}
+	packet.Size = packet.Len(); 
+	if packet.Size == 0 {
+		return nil, fmt.Errorf("Could not make packet");
+	}
+	return packet, nil 
+}
+
+
+func PacketAuthenticationServerMake(user *database.User) (*Packet, error) {
+	created_at := user.CreatedAt.String();
+	admin := uint8(0)
+	if user.IsAdmin {
+		admin = 1;
+	}
+	packet := &Packet{
+		Size:   0,
+		Kind:   PacketKind_AuthenticationServer,
+		Agent:  AgentServerMake(),
+		Payload: PacketAuthenticationServer{
+			UserId: user.Id,
+			IsAdmin: admin,
+			UsernameLen: uint32(len(user.Username)),
+			Username: user.Username,
+			CreatedAtLen: uint32(len(created_at)),
+			CreatedAt: created_at,
 		},
 	}
 	packet.Size = packet.Len(); 
@@ -241,6 +309,31 @@ func (packet *Packet) Serialize() (*bytes.Buffer, error) {
 				return nil, err;
 			}
 		}
+		case PacketOk:
+		{
+			if err := binary.Write(buffer, binary.LittleEndian, payload.ok); err != nil {
+				return nil, err;
+			}
+			if err := binary.Write(buffer, binary.LittleEndian, payload.ctx); err != nil {
+				return nil, err;
+			}
+		}
+		case PacketAuthenticationServer:
+		{
+			err := binary.Write(buffer, binary.LittleEndian, payload.UserId);
+			if err != nil {
+				return nil, err;
+			}
+			erra := binary.Write(buffer, binary.LittleEndian, payload.IsAdmin);
+			if erra != nil {
+				return nil, erra;
+			}
+			err_a := serialize_string(buffer, payload.Username,	payload.UsernameLen);
+			err_b := serialize_string(buffer, payload.CreatedAt,	payload.CreatedAtLen);
+			if err := errors.Join(err_a, err_b); err != nil {
+				return nil, err;
+			}
+		}
 		default:
 			return nil, fmt.Errorf("unsupported payload type");
 	}
@@ -346,7 +439,7 @@ func Deserialize(data []byte) (*Packet, error) {
 			source_file_len,	err_a := deserialize_string(buffer, &packet_payload.SourceFile);
 			created_at_len,		err_b := deserialize_string(buffer, &packet_payload.CreatedAt);
 			description_len,	err_c := deserialize_string(buffer, &packet_payload.Description);
-			title_len,				err_d := deserialize_string(buffer, &packet_payload.Name);
+			name_len,					err_d := deserialize_string(buffer, &packet_payload.Name);
 
 			if err := errors.Join(err_a, err_b, err_c, err_d); err != nil {
 				return nil, err;
@@ -354,7 +447,20 @@ func Deserialize(data []byte) (*Packet, error) {
 			packet_payload.SourceFileLen	= source_file_len;
 			packet_payload.CreatedAtLen		= created_at_len;
 			packet_payload.DescriptionLen	= description_len;
-			packet_payload.NameLen				= title_len;
+			packet_payload.NameLen				= name_len;
+			packet.Payload = packet_payload;
+		}
+		case PacketKind_AuthenticationClient:
+		{
+			var packet_payload PacketAuthenticationClient;
+			sza, a := deserialize_string(buffer, &packet_payload.Username);
+			szb, b := deserialize_string(buffer, &packet_payload.PasswordString);
+			packet_payload.UsernameLen = sza;
+			packet_payload.PasswordLen = szb;
+
+			if err := errors.Join(a, b); err != nil {
+				return nil, err;
+			}
 			packet.Payload = packet_payload;
 		}
 		default:
@@ -383,6 +489,14 @@ func try_send_packet(socket *websocket.Conn, packet *Packet) error {
 		websocket.BinaryMessage,
 		buffer.Bytes());
 	return send_err;
+}
+
+func try_send_ok(socket *websocket.Conn, ok uint8, ctx uint32) error {
+	packet, err := PacketOkMake(ok, ctx);
+	if err != nil {
+		return err;
+	}
+	return try_send_packet(socket, packet);
 }
 
 func server(w http.ResponseWriter, r *http.Request) {
@@ -459,6 +573,70 @@ func server(w http.ResponseWriter, r *http.Request) {
 						if err := try_send_packet(socket, packet); err != nil {
 							fmt.Println("Could not send packet: ", err);
 						}
+					}
+				}
+			}
+			case PacketKind_SpriteInfo:
+			{
+				if payload, ok	:= packet.Payload.(PacketSpriteInfo); ok {
+					if packet.Agent.Id < 2 {
+						socket.Close();
+						return;
+					}
+
+					user, err := database.UserById(database.Pool, packet.Agent.Id);
+					if err != nil {
+						socket.Close();
+						return;
+					}
+
+					if !user.IsAdmin {
+						socket.Close();
+						return;
+					}
+
+					create_err := database.CreateItem(
+						database.Pool,
+						payload.SourceFile,
+						payload.OffsetX,
+						payload.OffsetY,
+						payload.Width,
+						payload.Height,
+						payload.Description,
+						payload.Name);
+
+					var ok uint8 = 1;
+					if create_err != nil {
+						ok = 0;
+					}
+					try_send_ok(socket, ok, PacketKind_SpriteInfo);
+				}
+			}
+			case PacketKind_AuthenticationClient:
+			{
+				if payload, ok	:= packet.Payload.(PacketAuthenticationClient); ok {
+					user, err := database.UserByUsername(database.Pool, payload.Username);
+
+					if err != nil {
+						try_send_ok(socket, 0, PacketKind_AuthenticationClient);
+						return;
+					}
+
+					ok := database.CheckPasswordHash(user.PasswordHash, payload.PasswordString);
+					if !ok {
+						try_send_ok(socket, 0, PacketKind_AuthenticationClient);
+						break;
+					}
+
+					packet, err := PacketAuthenticationServerMake(user);
+					if err != nil {
+						try_send_ok(socket, 0, PacketKind_AuthenticationClient);
+						break;
+					}
+
+					err_send := try_send_packet(socket, packet);
+					if err_send != nil {
+						try_send_ok(socket, 1, PacketKind_AuthenticationClient);
 					}
 				}
 			}
