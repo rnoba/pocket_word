@@ -73,19 +73,7 @@ func QueryAllItems(pool *pgxpool.Pool) ([]Item, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second);
 	defer cancel();
 
-	tx, err := pool.Begin(ctx);
-	if err != nil {
-		return nil, err;
-	}
-
-	defer func() {
-		if err != nil {
-			log.Fatalf("Query rolled back: %v", err);
-			_ = tx.Rollback(ctx);
-		}
-	}();
-
-	rows, err := tx.Query(ctx, `SELECT * from items`);
+	rows, err := pool.Query(ctx, `SELECT * from items`);
 	if err != nil {
 		log.Printf("Failed to execute query: %s", err)
 		return nil, err;
@@ -96,6 +84,8 @@ func QueryAllItems(pool *pgxpool.Pool) ([]Item, error) {
 		var item Item;
 		if err := rows.Scan(&item.Id,
 												&item.SourceFile,
+												&item.Description,
+												&item.Name,
 												&item.OffsetX,
 												&item.OffsetY,
 												&item.Width,

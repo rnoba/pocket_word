@@ -346,7 +346,7 @@ func deserialize_string(buffer *bytes.Reader, dest_string *string) (uint32, erro
 		return 0, err;
 	}
 
-	if size <= 0 || size > 1024 {
+	if size < 0 || size > 1024 {
 		return size, fmt.Errorf(
 			"(deserialize_string): trying to deserialize strange string size `%d`",
 			size);
@@ -557,7 +557,14 @@ func server(w http.ResponseWriter, r *http.Request) {
 			case PacketKind_RequestSpriteInfo:
 			{
 				if payload, ok	:= packet.Payload.(PacketRequestSpriteInfo); ok {
-					items,		err	:= database.QueryAllFromSourceFile(database.Pool, payload.SourceFile);
+					var items []database.Item;
+					var err error;
+
+					if payload.SourceFileLen == 0 {
+						items, err = database.QueryAllItems(database.Pool);
+					} else {
+						items, err = database.QueryAllFromSourceFile(database.Pool, payload.SourceFile);
+					}
 
 					if err != nil {
 						fmt.Println("(QueryAllFromSourceFile) error: ", err);
