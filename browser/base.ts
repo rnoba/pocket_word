@@ -9,6 +9,12 @@ export function set_global_ctx(ctx: CanvasRenderingContext2D)
 	GlobalContext = ctx;
 }
 
+export enum Directions {
+	N, NW, W, SW, S, SE, E, NE,
+}
+
+export type IsometricDirections = Directions.SW | Directions.SE | Directions.NE | Directions.NW;
+
 export class V2 {
 	x: number;
 	y: number;
