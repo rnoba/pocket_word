@@ -131,6 +131,8 @@ const _EVENTS = [
 	"mouseout",
 	"keydown",
 	"keyup",
+	"resize",
+	"drop",
 ] as const; 
 
 const _EVENT_FIELDS: Record<typeof _EVENTS[number], Array<string>> = {
@@ -141,6 +143,8 @@ const _EVENT_FIELDS: Record<typeof _EVENTS[number], Array<string>> = {
 	"mouseout": ["relatedTarget", "toElement"],
 	"keydown": ["code", "keyCode", "repeat", "key"],
 	"keyup": ["code", "keyCode", "repeat", "key"],
+	"resize": [],
+	"drop": [],
 }
 
 type mEvent = Array<[typeof _EVENTS[number], Record<string, any>]>;
@@ -149,9 +153,29 @@ let free_evt: mEvent = [];
 
 function attach_listeners()
 {
+	window.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+	});
+
+	window.addEventListener("drop", (e) => {
+		e.preventDefault();
+		const data: File[] = [];
+
+		const files = e.dataTransfer?.files;
+		if (files)
+		{
+			for (const file of files) { data.push(file); }
+		}
+		const evt_data = { files: data };
+		event_queue.unshift(["drop", evt_data]);
+	})
+
 	for (const _evt of _EVENTS)
 	{
-		document.body.addEventListener(_evt, (evt) => {
+		if (_evt === "drop") { continue; }
+
+		window.addEventListener(_evt, (evt) => {
 			//evt.preventDefault();
 			//evt.stopPropagation();
 			const evt_data: Record<string, any> = {};
@@ -159,12 +183,6 @@ function attach_listeners()
 			{
 				evt_data[field] = (evt as any)[field];
 			}
-			//const btn_data: Record<string, any> = {};
-			//if (_evt == "pointermove")
-			//{
-			//	btn_data["buttons"] = (evt as PointerEvent).buttons;
-			//	event_queue.unshift(["pointerup", btn_data]);
-			//}
 			event_queue.unshift([_evt, evt_data]);
 		});
 	}
@@ -313,10 +331,7 @@ export function init(): InputInstance
 				case KKey.KEY_SingleQuote:
 				{
 					r = KEYBOARD_PRESSED_MAP.get(btn) || false;
-					if (r)
-					{
-						KEYBOARD_PRESSED_MAP.set(btn, false);
-					}
+					if (r) { KEYBOARD_PRESSED_MAP.set(btn, false); }
 				} break;
 				default:
 					break;
@@ -458,9 +473,10 @@ export function init(): InputInstance
 			free_evt.shift();
 		},
 		pool: function(): void {
+			KEYBOARD_PRESSED_MAP.clear();
 			while (event_queue.length)
 			{
-				//free_evt.shift();
+				free_evt.shift();
 				const evt = event_queue.shift()!;
 				free_evt.unshift(evt);
 				switch (evt[0])
@@ -485,7 +501,7 @@ export function init(): InputInstance
 						{
 							if (!is_key_down && KEYBOARD_STATE_MAP.get(key_code))
 							{
-								KEYBOARD_PRESSED_MAP.set(key_code, !is_key_down);
+								KEYBOARD_PRESSED_MAP.set(key_code, true);
 							}
 							KEYBOARD_STATE_MAP.set(key_code, is_key_down);
 						}
