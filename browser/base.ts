@@ -203,9 +203,11 @@ export function camera_transform_screen(
 	offset_x: number = 0,
 	offset_y: number = 0,
 ): V2 {
+
 	out.x = x;
 	out.y = y;
-	out.screen(z)
+	out
+		.screen(z)
 		.add2(offset_x, offset_y)
 		.sub2(camera.x, camera.y)
 		.scale(camera.zoom)
