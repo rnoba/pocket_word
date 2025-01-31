@@ -2,28 +2,39 @@ import * as Base from "./base.js";
 
 export type SpriteId = bigint;
 
-export let SPRITES: ImageBitmap | null = null;
-
 export type Sprite = {
 	id: number;
 	rect: Base.Rect;
-	// sprite offset when being draw
+
 	offset_x: number; 
 	offset_y: number; 
 
-	description: { value: string };
-	name: { value: string };
+	description: string;
+	name: string;
 	created_at: string;
+	source_file: string;
+}
+
+export type SpriteB = {
+	id: number;
+	rect: Base.Rect;
+	offset_x: number; 
+	offset_y: number; 
+	description: string;
+	name: string;
+	created_at: string;
+	source_file: string;
 }
 
 export function Sprite_new(
 	rect: Base.Rect,
-	offset_x: number, 
-	offset_y: number, 
+	source_file: string,
 	id: number = 0,
+	offset_x: number = 0, 
+	offset_y: number = 0,
 	description: string = "<DESCRIPTION>",
 	name: string = "<NAME>",
-	created_at: string = ""
+	created_at: string = "",
 )
 {
 	const sprite: Sprite = {
@@ -31,12 +42,9 @@ export function Sprite_new(
 		rect,
 		offset_x,
 		offset_y,
-		description: {
-			value: description
-		},
-		name: {
-			value: name
-		},
+		description,
+		name,
+		source_file,
 		created_at
 	}
 	return (sprite);
@@ -87,25 +95,26 @@ async function collect_sprites(size: number, image: HTMLImageElement): Promise<A
 	return (await Promise.all(promises));
 }
 
-export async function load()
+export async function load(): Promise<SpriteSource>
 {
-	const image_test	= await load_image("./test.png");
-	const image_test_2	= await load_image("./test_2.png");
-	const image		= await load_image("./sprites.png");
-	const sprites = await collect_sprites(Base.TW, image);
+	//const image_test	= await load_image("./test.png");
+	//const image_test_2	= await load_image("./test_2.png");
+	//const sprites = await collect_sprites(Base.TW, image);
 
-	const scale_x = 800/image.width;
-	const scale_y = 600/image.height;
-	const source_bitmap_original_test = await createImageBitmap(image_test, 0, 0, image_test.width, image_test.height);
-	const source_bitmap_original_test_2 = await createImageBitmap(image_test_2, 0, 0, image_test_2.width, image_test_2.height);
+	//const scale_x = 800/image.width;
+	//const scale_y = 600/image.height;
+	//const source_bitmap_original_test = await createImageBitmap(image_test, 0, 0, image_test.width, image_test.height);
+	//const source_bitmap_original_test_2 = await createImageBitmap(image_test_2, 0, 0, image_test_2.width, image_test_2.height);
+	const image	= await load_image("./test6.png");
 	const source_bitmap_original = await createImageBitmap(image, 0, 0, image.width, image.height);
-	SPRITES = source_bitmap_original;
-	return [sprites, source_bitmap_original];
+	return source_bitmap_original;
 }
 
+export type SpriteSource = HTMLImageElement | ImageBitmap;
+
 export function draw_from_image(
-	ctx: CanvasRenderingContext2D,
-	src: HTMLImageElement,
+	ctx:		CanvasRenderingContext2D,
+	src:		SpriteSource,
 	sprite: Sprite,
 	camera: Base.Camera,
 	x: number,
@@ -113,26 +122,46 @@ export function draw_from_image(
 	z: number
 ) {
 	const offset_x = sprite.offset_x - (Base.TW/2);
-	const offset_y = sprite.offset_y - (Base.TW/2);
+	const offset_y = sprite.offset_y - (Base.TH/2);
 
-	const start_draw = Base.camera_transform_screen(
-		camera,
-		x, y, z,
-		offset_x,
-		offset_y
-	);
-
-	const sprite_size_x = sprite.rect.width * camera.scaling;
-	const sprite_size_y = sprite.rect.height * camera.scaling;
+	const dest = Base.V2.Zero();
+	Base.camera_transform_screen(camera, x, y, z, dest, offset_x, offset_y);
+	const sprite_size_x = sprite.rect.width * camera.zoom;
+	const sprite_size_y = sprite.rect.height * camera.zoom;
+	//console.log(sprite.rect.position.x, sprite.rect.position.y, Base.Floor(sprite_size_x), Base.Floor(sprite_size_y));
 	ctx.drawImage(
 		src,
-		Math.floor(sprite.rect.position.x),
-		Math.floor(sprite.rect.position.y),
-		Math.floor(sprite.rect.width),
-		Math.floor(sprite.rect.height),
-		Math.floor(start_draw.x),
-		Math.floor(start_draw.y),
-		Math.floor(sprite_size_x),
-		Math.floor(sprite_size_y)
+		Base.Floor(sprite.rect.position.x),
+		Base.Floor(sprite.rect.position.y),
+		Base.Floor(sprite.rect.width),
+		Base.Floor(sprite.rect.height),
+		Base.Floor(dest.x),
+		Base.Floor(dest.y),
+		Base.Floor(sprite_size_x),
+		Base.Floor(sprite_size_y)
 	);
+}
+
+export function draw_from_image_(
+	ctx:		CanvasRenderingContext2D,
+	src:		SpriteSource,
+	sprite: Sprite,
+	sx: number,
+	sy: number,
+	scaling = 1)
+{
+	//ctx.save();
+	//ctx.scale(scaling, scaling);
+	const width		= Base.align_pow2(sprite.rect.width		* scaling, 2);
+	const height	= Base.align_pow2(sprite.rect.height	* scaling, 2);
+	//const width		= sprite.rect.width;
+	//const height	= sprite.rect.height;
+	ctx.drawImage(src,
+								sprite.rect.position.x,
+								sprite.rect.position.y,
+								sprite.rect.width,
+								sprite.rect.height,
+								Base.Floor(sx), Base.Floor(sy),
+								width,	height);
+	//ctx.restore();
 }
