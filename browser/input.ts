@@ -109,7 +109,8 @@ export enum KKey {
 	KEY_OpenBracket = 219,
 	KEY_BackSlash = 220,
 	KEY_CloseBracket = 221,
-	KEY_SingleQuote = 222
+	KEY_SingleQuote = 222,
+	_KEY_COUNT
 }
 
 const KEYBOARD_STATE_MAP: Map<number, boolean> = new Map();
@@ -123,33 +124,65 @@ type Cursor = {
 	wheel: Base.V2 
 }
 
-const _EVENTS = [
-	"pointerdown",
-	"pointerup",
-	"wheel",
-	"pointermove",
-	"mouseout",
-	"keydown",
-	"keyup",
-	"resize",
-	"drop",
-] as const; 
-
-const _EVENT_FIELDS: Record<typeof _EVENTS[number], Array<string>> = {
-	"pointermove": ["clientX", "clientY"],
-	"pointerdown": ["buttons"],
-	"pointerup": ["buttons"],
-	"wheel": ["deltaX", "deltaY"],
-	"mouseout": ["relatedTarget", "toElement"],
-	"keydown": ["code", "keyCode", "repeat", "key"],
-	"keyup": ["code", "keyCode", "repeat", "key"],
-	"resize": [],
-	"drop": [],
+export enum IptEventKind {
+	PointerMove,
+	PointerDown,
+	PointerUp,
+	Wheel,
+	MouseOut,
+	KeyDown,
+	KeyUp,
+	Resize,
+	Drop
 }
 
-type mEvent = Array<[typeof _EVENTS[number], Record<string, any>]>;
-const event_queue: mEvent = [];
-let free_evt: mEvent = [];
+const _JS_EVENT_TO_EVENT_KIND: Record<string, IptEventKind> = {
+	"pointermove":	IptEventKind.PointerMove,
+	"pointerdown":	IptEventKind.PointerDown,
+	"pointerup":		IptEventKind.PointerUp,
+	"mouseout":			IptEventKind.MouseOut,
+	"keydown":			IptEventKind.KeyDown,
+	"resize":				IptEventKind.Resize,
+	"wheel":				IptEventKind.Wheel,
+	"keyup":				IptEventKind.KeyUp,
+	"drop":					IptEventKind.Drop
+}
+
+export type WheelEvent = {
+	deltaX: number;
+	deltaY: number;
+}
+
+export type KeyEvent = {
+	repeat: boolean;
+	keyCode: number;
+}
+
+export type DropEvent<T> = {
+	data: T[],
+}
+
+export type PointerEvent = {
+	clientX: number;
+	clientY: number;
+	buttons: number;
+}
+
+export type IptEvent<T> = {
+	kind: IptEventKind;
+	payload: T;
+}
+
+export type ResizeEvent = {
+	width: number;
+	height: number;
+}
+
+type IptEvents = KeyEvent | WheelEvent | DropEvent<unknown> | PointerEvent | ResizeEvent;
+
+function ipt_event_make<T>(kind: IptEventKind, payload: T): IptEvent<T> {
+	return { kind, payload }
+}
 
 function attach_listeners()
 {
@@ -161,368 +194,185 @@ function attach_listeners()
 	window.addEventListener("drop", (e) => {
 		e.preventDefault();
 		const data: File[] = [];
-
 		const files = e.dataTransfer?.files;
-		if (files)
-		{
-			for (const file of files) { data.push(file); }
-		}
-		const evt_data = { files: data };
-		event_queue.unshift(["drop", evt_data]);
-	})
+		if (files) for (const file of files) { data.push(file); }
+		const evt = ipt_event_make<DropEvent<File>>(IptEventKind.Drop, { data }); 
+		event_queue.unshift(evt);
+	});
 
-	for (const _evt of _EVENTS)
+	window.addEventListener("resize", (_) => {
+		const data = document.body.getBoundingClientRect();
+		const evt = ipt_event_make<ResizeEvent>(IptEventKind.Resize, { width: data.width, height: data.height }); 
+		event_queue.unshift(evt);
+	});
+
+	for (const js_evt of _EVENTS)
 	{
-		if (_evt === "drop") { continue; }
+		const kind = _JS_EVENT_TO_EVENT_KIND[js_evt];
+		if (kind === IptEventKind.Drop ||
+				kind === IptEventKind.Resize) { continue; }
 
-		window.addEventListener(_evt, (evt) => {
+		window.addEventListener(js_evt, (evt_data) => {
 			//evt.preventDefault();
 			//evt.stopPropagation();
-			const evt_data: Record<string, any> = {};
-			for (const field of _EVENT_FIELDS[_evt])
+			const evt = ipt_event_make<any>(kind, {});
+			for (const field of _EVENT_FIELDS[js_evt])
 			{
-				evt_data[field] = (evt as any)[field];
+				evt.payload[field] = (evt_data as any)[field];
 			}
-			event_queue.unshift([_evt, evt_data]);
+			event_queue.unshift(evt);
 		});
+
 	}
 }
 
-function dettach_listeners()
+const _EVENTS = [
+	"pointerdown",
+	"pointerup",
+	"wheel",
+	"pointermove",
+	"mouseout",
+	"keydown",
+	"keyup",
+] as const; 
+
+const _EVENT_FIELDS: Record<typeof _EVENTS[number], Array<string>> = {
+	"pointermove": ["clientX", "clientY"],
+	"pointerdown": ["buttons"],
+	"pointerup": ["buttons"],
+	"wheel": ["deltaX", "deltaY"],
+	"mouseout": ["relatedTarget", "toElement"],
+	"keydown": ["code", "keyCode", "repeat", "key"],
+	"keyup": ["code", "keyCode", "repeat", "key"],
+}
+
+const event_queue: Array<IptEvent<IptEvents>> = [];
+let		free_evt: Array<IptEvent<IptEvents>> = [];
+
+const _Cursor: Cursor = {
+	position: Base.V2.Zero(),
+	buttons: [false, false, false],
+	wheel: Base.V2.Zero(),
+}
+
+export function next_event<T = IptEvents>(): null | IptEvent<T>
+{
+	return free_evt[0] as null | IptEvent<T>;
+}
+
+export function next_event_is<T = IptEvents>(kind: IptEventKind): null | IptEvent<T>
+{
+	if (next_event<T>()?.kind === kind) {
+		return next_event<T>();
+	}
+	return null;
+}
+
+export function consume_event()
+{
+	return free_evt.shift() || null;
+}
+
+export function consume_specific<T = IptEvents>(kind: IptEventKind): null | IptEvent<T>
+{
+	if (next_event<T>()?.kind === kind) {
+		return consume_event() as IptEvent<T>;
+	}
+	return null;
+}
+
+export function cursor()
+{
+	return _Cursor;
+}
+
+export function is_pressed(btn: Key): boolean {
+ return KEYBOARD_PRESSED_MAP.get(btn) || false;
+}
+
+export function is_down(btn: Key): boolean {
+	let down = false;
+	switch (btn)
+	{
+		case MBttn.M_LEFT:
+		case MBttn.M_RIGHT:
+		case MBttn.M_WHEEL:
+		{
+			down = _Cursor.buttons[btn];
+		} break;
+		default: 
+		{
+			down = KEYBOARD_STATE_MAP.get(btn) || false;
+		} break;
+	}
+	return (down);
+}
+
+export function pool()
+{
+	KEYBOARD_PRESSED_MAP.clear();
+	while (event_queue.length)
+		{
+			free_evt.shift();
+			const evt = event_queue.shift()!;
+			free_evt.unshift(evt);
+
+			switch (evt.kind)
+			{
+				case IptEventKind.PointerDown:
+				case IptEventKind.PointerUp:
+					{
+					const payload = evt.payload as PointerEvent;
+
+					const buttons = payload.buttons;
+					_Cursor.buttons[MBttn.M_LEFT]	= !!(buttons & 1);
+					_Cursor.buttons[MBttn.M_RIGHT] = !!(buttons & 2);
+					_Cursor.buttons[MBttn.M_WHEEL] = !!(buttons & 4);
+				} break;
+				case IptEventKind.KeyUp:
+					case IptEventKind.KeyDown:
+					{
+					const payload = evt.payload as KeyEvent;
+
+					const key_code	= payload.keyCode;
+					const repeat		= payload.repeat;
+					const is_key_down = evt.kind === IptEventKind.KeyDown; 
+					if (repeat === false)
+						{
+							if (!is_key_down && KEYBOARD_STATE_MAP.get(key_code))
+								{
+									KEYBOARD_PRESSED_MAP.set(key_code, true);
+								}
+								KEYBOARD_STATE_MAP.set(key_code, is_key_down);
+						}
+				} break;
+				case IptEventKind.MouseOut:
+					{ 
+					_Cursor.buttons[MBttn.M_LEFT]	= false;
+					_Cursor.buttons[MBttn.M_RIGHT] = false;
+					_Cursor.buttons[MBttn.M_WHEEL] = false; 
+				} break;
+				case IptEventKind.PointerMove:
+					{
+					const payload = evt.payload as PointerEvent; 
+					_Cursor.position.x = payload.clientX;
+					_Cursor.position.y = payload.clientY;
+				} break;
+				default: 
+					break;
+			}
+		}
+}
+
+export function init()
+{
+	attach_listeners();
+}
+
+export function deinit()
 {
 	for (const evt of _EVENTS) {
 		document.body.removeEventListener(evt, () => {});
 	}
 }
 
-export interface InputInstance {
-	pool: () => void;
-	consume_event: () => void;
-	next_event: () => null | mEvent[number]
-	cursor: Cursor;
-	is_down: (btn: Key) => boolean;
-	pressed: (btn: Key) => boolean;
-	deinit: () => void;
-}
-
-export function init(): InputInstance
-{
-	attach_listeners();
-	const cursor: Cursor = {
-		position: Base.V2.Zero(),
-		buttons: [false, false, false],
-		wheel: Base.V2.Zero(),
-	}
-
-	return {
-		cursor,
-		deinit: dettach_listeners,
-		pressed: function(btn: Key): boolean {
-			let r = false;
-			switch (btn)
-			{
-				case KKey.KEY_W:
-				case KKey.KEY_A:
-				case KKey.KEY_S:
-				case KKey.KEY_D:
-				case KKey.KEY_E:
-				case KKey.KEY_LShift:
-				case KKey.KEY_LCtrl:
-				case KKey.KEY_Backspace:
-				case KKey.KEY_Tab:
-				case KKey.KEY_Enter:
-				case KKey.KEY_Shift:
-				case KKey.KEY_Ctrl:
-				case KKey.KEY_Alt:
-				case KKey.KEY_PauseBreak:
-				case KKey.KEY_CapsLock:
-				case KKey.KEY_Escape:
-				case KKey.KEY_PageUp:
-				case KKey.KEY_Space:
-				case KKey.KEY_PageDown:
-				case KKey.KEY_End:
-				case KKey.KEY_Home:
-				case KKey.KEY_ArrowLeft:
-				case KKey.KEY_ArrowUp:
-				case KKey.KEY_ArrowRight:
-				case KKey.KEY_ArrowDown:
-				case KKey.KEY_PrintScreen:
-				case KKey.KEY_Insert:
-				case KKey.KEY_Delete:
-				case KKey.KEY_0:
-				case KKey.KEY_1:
-				case KKey.KEY_2:
-				case KKey.KEY_3:
-				case KKey.KEY_4:
-				case KKey.KEY_5:
-				case KKey.KEY_6:
-				case KKey.KEY_7:
-				case KKey.KEY_8:
-				case KKey.KEY_9:
-				case KKey.KEY_A:
-				case KKey.KEY_B:
-				case KKey.KEY_C:
-				case KKey.KEY_D:
-				case KKey.KEY_E:
-				case KKey.KEY_F:
-				case KKey.KEY_G:
-				case KKey.KEY_H:
-				case KKey.KEY_I:
-				case KKey.KEY_J:
-				case KKey.KEY_K:
-				case KKey.KEY_L:
-				case KKey.KEY_M:
-				case KKey.KEY_N:
-				case KKey.KEY_O:
-				case KKey.KEY_P:
-				case KKey.KEY_Q:
-				case KKey.KEY_R:
-				case KKey.KEY_S:
-				case KKey.KEY_T:
-				case KKey.KEY_U:
-				case KKey.KEY_V:
-				case KKey.KEY_W:
-				case KKey.KEY_X:
-				case KKey.KEY_Y:
-				case KKey.KEY_Z:
-				case KKey.KEY_LeftWindowKey:
-				case KKey.KEY_RightWindowKey:
-				case KKey.KEY_SelectKey:
-				case KKey.KEY_Numpad0:
-				case KKey.KEY_Numpad1:
-				case KKey.KEY_Numpad2:
-				case KKey.KEY_Numpad3:
-				case KKey.KEY_Numpad4:
-				case KKey.KEY_Numpad5:
-				case KKey.KEY_Numpad6:
-				case KKey.KEY_Numpad7:
-				case KKey.KEY_Numpad8:
-				case KKey.KEY_Numpad9:
-				case KKey.KEY_Multiply:
-				case KKey.KEY_Add:
-				case KKey.KEY_Subtract:
-				case KKey.KEY_DecimalPoint:
-				case KKey.KEY_Divide:
-				case KKey.KEY_F1:
-				case KKey.KEY_F2:
-				case KKey.KEY_F3:
-				case KKey.KEY_F4:
-				case KKey.KEY_F5:
-				case KKey.KEY_F6:
-				case KKey.KEY_F7:
-				case KKey.KEY_F8:
-				case KKey.KEY_F9:
-				case KKey.KEY_F10:
-				case KKey.KEY_F11:
-				case KKey.KEY_F12:
-				case KKey.KEY_NumLock:
-				case KKey.KEY_ScrollLock:
-				case KKey.KEY_MyComputer:
-				case KKey.KEY_MyCalculator:
-				case KKey.KEY_SemiColon:
-				case KKey.KEY_EqualSign:
-				case KKey.KEY_Comma:
-				case KKey.KEY_Dash:
-				case KKey.KEY_Period:
-				case KKey.KEY_ForwardSlash:
-				case KKey.KEY_OpenBracket:
-				case KKey.KEY_BackSlash:
-				case KKey.KEY_CloseBracket:
-				case KKey.KEY_SingleQuote:
-				{
-					r = KEYBOARD_PRESSED_MAP.get(btn) || false;
-					if (r) { KEYBOARD_PRESSED_MAP.set(btn, false); }
-				} break;
-				default:
-					break;
-			}
-			return (r);
-		},
-		is_down: function(btn: Key): boolean {
-			let r = false;
-			switch (btn)
-			{
-				case MBttn.M_LEFT:
-				case MBttn.M_RIGHT:
-				case MBttn.M_WHEEL:
-				{
-					r = cursor.buttons[btn];
-				} break;
-				case KKey.KEY_W:
-				case KKey.KEY_A:
-				case KKey.KEY_S:
-				case KKey.KEY_D:
-				case KKey.KEY_E:
-				case KKey.KEY_LShift:
-				case KKey.KEY_LCtrl:
-				case KKey.KEY_Backspace:
-				case KKey.KEY_Tab:
-				case KKey.KEY_Enter:
-				case KKey.KEY_Shift:
-				case KKey.KEY_Ctrl:
-				case KKey.KEY_Alt:
-				case KKey.KEY_PauseBreak:
-				case KKey.KEY_CapsLock:
-				case KKey.KEY_Escape:
-				case KKey.KEY_PageUp:
-				case KKey.KEY_Space:
-				case KKey.KEY_PageDown:
-				case KKey.KEY_End:
-				case KKey.KEY_Home:
-				case KKey.KEY_ArrowLeft:
-				case KKey.KEY_ArrowUp:
-				case KKey.KEY_ArrowRight:
-				case KKey.KEY_ArrowDown:
-				case KKey.KEY_PrintScreen:
-				case KKey.KEY_Insert:
-				case KKey.KEY_Delete:
-				case KKey.KEY_0:
-				case KKey.KEY_1:
-				case KKey.KEY_2:
-				case KKey.KEY_3:
-				case KKey.KEY_4:
-				case KKey.KEY_5:
-				case KKey.KEY_6:
-				case KKey.KEY_7:
-				case KKey.KEY_8:
-				case KKey.KEY_9:
-				case KKey.KEY_A:
-				case KKey.KEY_B:
-				case KKey.KEY_C:
-				case KKey.KEY_D:
-				case KKey.KEY_E:
-				case KKey.KEY_F:
-				case KKey.KEY_G:
-				case KKey.KEY_H:
-				case KKey.KEY_I:
-				case KKey.KEY_J:
-				case KKey.KEY_K:
-				case KKey.KEY_L:
-				case KKey.KEY_M:
-				case KKey.KEY_N:
-				case KKey.KEY_O:
-				case KKey.KEY_P:
-				case KKey.KEY_Q:
-				case KKey.KEY_R:
-				case KKey.KEY_S:
-				case KKey.KEY_T:
-				case KKey.KEY_U:
-				case KKey.KEY_V:
-				case KKey.KEY_W:
-				case KKey.KEY_X:
-				case KKey.KEY_Y:
-				case KKey.KEY_Z:
-				case KKey.KEY_LeftWindowKey:
-				case KKey.KEY_RightWindowKey:
-				case KKey.KEY_SelectKey:
-				case KKey.KEY_Numpad0:
-				case KKey.KEY_Numpad1:
-				case KKey.KEY_Numpad2:
-				case KKey.KEY_Numpad3:
-				case KKey.KEY_Numpad4:
-				case KKey.KEY_Numpad5:
-				case KKey.KEY_Numpad6:
-				case KKey.KEY_Numpad7:
-				case KKey.KEY_Numpad8:
-				case KKey.KEY_Numpad9:
-				case KKey.KEY_Multiply:
-				case KKey.KEY_Add:
-				case KKey.KEY_Subtract:
-				case KKey.KEY_DecimalPoint:
-				case KKey.KEY_Divide:
-				case KKey.KEY_F1:
-				case KKey.KEY_F2:
-				case KKey.KEY_F3:
-				case KKey.KEY_F4:
-				case KKey.KEY_F5:
-				case KKey.KEY_F6:
-				case KKey.KEY_F7:
-				case KKey.KEY_F8:
-				case KKey.KEY_F9:
-				case KKey.KEY_F10:
-				case KKey.KEY_F11:
-				case KKey.KEY_F12:
-				case KKey.KEY_NumLock:
-				case KKey.KEY_ScrollLock:
-				case KKey.KEY_MyComputer:
-				case KKey.KEY_MyCalculator:
-				case KKey.KEY_SemiColon:
-				case KKey.KEY_EqualSign:
-				case KKey.KEY_Comma:
-				case KKey.KEY_Dash:
-				case KKey.KEY_Period:
-				case KKey.KEY_ForwardSlash:
-				case KKey.KEY_OpenBracket:
-				case KKey.KEY_BackSlash:
-				case KKey.KEY_CloseBracket:
-				case KKey.KEY_SingleQuote:
-				{
-					r = KEYBOARD_STATE_MAP.get(btn) || false;
-				} break;
-				default:
-					break;
-			}
-			return (r);
-		},
-		next_event: function()
-		{
-			return free_evt[0];
-		},
-		consume_event: function()
-		{
-			free_evt.shift();
-		},
-		pool: function(): void {
-			KEYBOARD_PRESSED_MAP.clear();
-			while (event_queue.length)
-			{
-				free_evt.shift();
-				const evt = event_queue.shift()!;
-				free_evt.unshift(evt);
-				switch (evt[0])
-				{
-					case "pointerdown":
-					case "pointerup":
-					{
-							const buttons = evt[1].buttons as number;
-							cursor.buttons[MBttn.M_LEFT]	= !!(buttons & 1);
-							cursor.buttons[MBttn.M_RIGHT] = !!(buttons & 2);
-							cursor.buttons[MBttn.M_WHEEL] = !!(buttons & 4);
-					} break;
-					case "keyup":
-					case "keydown":
-					{
-						const name			= evt[0] as string;
-						const key_code	= evt[1].keyCode as number;
-						const repeat		= evt[1].repeat as boolean;
-						const is_key_down = (name === "keydown");
-
-						if (repeat === false)
-						{
-							if (!is_key_down && KEYBOARD_STATE_MAP.get(key_code))
-							{
-								KEYBOARD_PRESSED_MAP.set(key_code, true);
-							}
-							KEYBOARD_STATE_MAP.set(key_code, is_key_down);
-						}
-					} break;
-					case "mouseout":
-					{ 
-						//if (!evt[1].relatedTarget && !evt[1].toElement) 
-						//{
-						cursor.buttons[MBttn.M_LEFT]	= false; 
-						cursor.buttons[MBttn.M_RIGHT] = false; 
-						cursor.buttons[MBttn.M_WHEEL] = false; 
-					} break;
-					case "pointermove":
-					{
-							cursor.position.x = (evt[1].clientX as number);
-							cursor.position.y = (evt[1].clientY as number);
-					} break;
-					default: 
-						break;
-				}
-			}
-		}
-	}
-}
