@@ -4,7 +4,8 @@ import * as Input		from "./input.js";
 import * as Ui			from "./ui.js";
 import * as WS			from "./socket.js";
 import * as Packet	from "./packet.js";
-import * as Editor from "./editor.js";
+import * as Editor	from "./editor.js";
+import * as Widget	from "./widgets.js";
 
 function user_is_anonymous(user_id: number)
 {
@@ -94,13 +95,13 @@ type User = {
 		{
 			const { width, height } = evt.payload;
 			canvas.width = innerWidth; canvas.height = innerHeight;
-			Editor.editor_set_size(width, height);
 		}
 
-		//Ui.ui_frame_begin(dt, canvas.width, canvas.height);
-		//	Ui.ui_draw_inventory(sprites);
-		//Ui.ui_frame_end();
-		Editor.editor(dt, sprites);
+		Ui.ui_frame_begin(dt, canvas.width, canvas.height);
+			Input.debug_dump();
+			Widget.inventory();
+		Ui.ui_frame_end();
+		//Editor.editor(dt, sprites);
 	}
 
 	let prev_timestamp = 0;

@@ -1,4 +1,6 @@
 import * as Base from "./base.js";
+import * as Ui from "./ui.js";
+import * as Palette from "./palette.js";
 
 export enum MBttn {
 	M_LEFT	= 0,
@@ -260,7 +262,7 @@ export function next_event<T = IptEvents>(): null | IptEvent<T>
 	return free_evt[0] as null | IptEvent<T>;
 }
 
-export function next_event_is<T = IptEvents>(kind: IptEventKind): null | IptEvent<T>
+export function next_event_of<T = IptEvents>(kind: IptEventKind): null | IptEvent<T>
 {
 	if (next_event<T>()?.kind === kind) {
 		return next_event<T>();
@@ -287,7 +289,7 @@ export function cursor()
 }
 
 export function is_pressed(btn: Key): boolean {
- return KEYBOARD_PRESSED_MAP.get(btn) || false;
+	return KEYBOARD_PRESSED_MAP.get(btn) || false;
 }
 
 export function is_down(btn: Key): boolean {
@@ -295,13 +297,13 @@ export function is_down(btn: Key): boolean {
 	switch (btn)
 	{
 		case MBttn.M_LEFT:
-		case MBttn.M_RIGHT:
-		case MBttn.M_WHEEL:
-		{
+			case MBttn.M_RIGHT:
+			case MBttn.M_WHEEL:
+			{
 			down = _Cursor.buttons[btn];
 		} break;
 		default: 
-		{
+			{
 			down = KEYBOARD_STATE_MAP.get(btn) || false;
 		} break;
 	}
@@ -320,7 +322,7 @@ export function pool()
 			switch (evt.kind)
 			{
 				case IptEventKind.PointerDown:
-				case IptEventKind.PointerUp:
+					case IptEventKind.PointerUp:
 					{
 					const payload = evt.payload as PointerEvent;
 
@@ -376,3 +378,36 @@ export function deinit()
 	}
 }
 
+export function debug_dump()
+{
+	Ui.attach_begin(Ui.UiAttachPos.BottomLeft);
+		Ui.push_next_width(Ui.size_fixed(300, 1));
+		Ui.push_next_height(Ui.size_fixed(300, 1));
+		Ui.push_next_palette(Palette.default_palette);
+		Ui.push_next_text_alignment(Ui.UiTextAlignment.Left);
+		Ui.push_next_child_axis(Ui.AxisY);
+
+		const wid = Ui.widget_make(`input-debug--dump`, Ui.UiDrawBackground|Ui.UiDrawBorder);
+		Ui.push_parent(wid);
+			Ui.push_font_size(20);
+				Ui.column_begin();
+				Ui.row_begin();
+				Ui.spacer(Ui.size_fixed(10));
+					Ui.push_next_width(Ui.size_text_content());
+					Ui.push_next_height(Ui.size_fixed(30));
+					Ui.widget_make(`input-debug--dump--event--qeue#events: ${event_queue.length}`, Ui.UiDrawText);
+				Ui.row_end();
+				Ui.column_end();
+
+				Ui.column_begin();
+				Ui.row_begin();
+				Ui.spacer(Ui.size_fixed(10));
+					Ui.push_next_width(Ui.size_text_content());
+					Ui.push_next_height(Ui.size_fixed(30));
+					Ui.widget_make(`input-debug--dump--free--event--qeue#free events: ${free_evt.length}`, Ui.UiDrawText);
+				Ui.row_end();
+				Ui.column_end();
+			Ui.pop_font_size();
+		Ui.pop_parent();
+	Ui.attach_end();
+}

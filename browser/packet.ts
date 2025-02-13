@@ -305,26 +305,23 @@ export function packet_authentication_client_make(username: string, password: st
 export const PingPacket = packet_ping_make(); 
 export const PongPacket = packet_pong_make(); 
 
-export function packet_request_sprite_info_make(source_file: string)
+export function packet_request_sprite_info_make(source_file: string | null = null)
 {
 	const packet: Packet = {} as Packet;
 
 	packet.agent		= agent_anonymous_make();
 	packet.kind			= PacketKind.PacketKind_RequestSpriteInfo;
+
+	const len = source_file ? source_file.length : 0; 
 	packet.payload	= {
-		source_file,
-		length: source_file.length
+		source_file: source_file ? source_file : "",
+		length: len 
 	} as PacketRequestSpriteInfo;
 
-	packet.size = 8 + agent_size(packet.agent) + 4 + source_file.length; 
+	packet.size = 8 + agent_size(packet.agent) + 4 + len; 
 	return (packet);
 }
 
-// order ->
-// size
-// kind
-// agent
-// packet specific data
 export function packet_serialize(packet: Packet): ArrayBuffer 
 {
 	const buffer	= new ArrayBuffer(packet.size);

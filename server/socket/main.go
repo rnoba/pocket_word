@@ -659,6 +659,6 @@ var addr = flag.String("addr", "localhost:8080", "http service address");
 func StartServer() {
 	http.HandleFunc("/", server);
 
-	fmt.Println("Server running");
+	fmt.Println("running");
 	log.Fatal(http.ListenAndServe(*addr, nil));
 }

@@ -16,10 +16,8 @@ export function send_packet(socket, packet) {
         if (packet.kind === Packet.PacketKind.PacketKind_Ping) {
             last_ping_sent = performance.now();
         }
-        console.info(packet);
-        console.time("sending packet");
+        console.log(`sending packet ${Packet.packet_kind_to_string[packet.kind]}`);
         const data = Packet.packet_serialize(packet);
-        console.timeEnd("sending packet");
         socket.send(data);
     }
 }

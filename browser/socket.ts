@@ -26,11 +26,8 @@ export function send_packet(socket: WebSocket, packet: Packet.Packet)
 		{
 			last_ping_sent = performance.now();
 		}
-
-		console.info(packet);
-		console.time("sending packet");
+		console.log(`sending packet ${Packet.packet_kind_to_string[packet.kind as Packet.PacketKind]}`);
 		const data = Packet.packet_serialize(packet); 
-		console.timeEnd("sending packet");
 		socket.send(data);
 	}
 }
@@ -87,7 +84,7 @@ export function connect()
 			console.info("ping(ms): ", performance.now() - last_ping_sent);
 		}
 
-		const dispatch	= listeners.get(packet.kind); 
+		const dispatch = listeners.get(packet.kind); 
 		if (dispatch)
 		{
 			for (const fn of dispatch)

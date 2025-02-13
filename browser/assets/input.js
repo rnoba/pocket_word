@@ -1,4 +1,6 @@
 import * as Base from "./base.js";
+import * as Ui from "./ui.js";
+import * as Palette from "./palette.js";
 export var MBttn;
 (function (MBttn) {
     MBttn[MBttn["M_LEFT"] = 0] = "M_LEFT";
@@ -110,9 +112,74 @@ export var KKey;
     KKey[KKey["KEY_BackSlash"] = 220] = "KEY_BackSlash";
     KKey[KKey["KEY_CloseBracket"] = 221] = "KEY_CloseBracket";
     KKey[KKey["KEY_SingleQuote"] = 222] = "KEY_SingleQuote";
+    KKey[KKey["_KEY_COUNT"] = 223] = "_KEY_COUNT";
 })(KKey || (KKey = {}));
 const KEYBOARD_STATE_MAP = new Map();
 const KEYBOARD_PRESSED_MAP = new Map();
+export var IptEventKind;
+(function (IptEventKind) {
+    IptEventKind[IptEventKind["PointerMove"] = 0] = "PointerMove";
+    IptEventKind[IptEventKind["PointerDown"] = 1] = "PointerDown";
+    IptEventKind[IptEventKind["PointerUp"] = 2] = "PointerUp";
+    IptEventKind[IptEventKind["Wheel"] = 3] = "Wheel";
+    IptEventKind[IptEventKind["MouseOut"] = 4] = "MouseOut";
+    IptEventKind[IptEventKind["KeyDown"] = 5] = "KeyDown";
+    IptEventKind[IptEventKind["KeyUp"] = 6] = "KeyUp";
+    IptEventKind[IptEventKind["Resize"] = 7] = "Resize";
+    IptEventKind[IptEventKind["Drop"] = 8] = "Drop";
+})(IptEventKind || (IptEventKind = {}));
+const _JS_EVENT_TO_EVENT_KIND = {
+    "pointermove": IptEventKind.PointerMove,
+    "pointerdown": IptEventKind.PointerDown,
+    "pointerup": IptEventKind.PointerUp,
+    "mouseout": IptEventKind.MouseOut,
+    "keydown": IptEventKind.KeyDown,
+    "resize": IptEventKind.Resize,
+    "wheel": IptEventKind.Wheel,
+    "keyup": IptEventKind.KeyUp,
+    "drop": IptEventKind.Drop
+};
+function ipt_event_make(kind, payload) {
+    return { kind, payload };
+}
+function attach_listeners() {
+    window.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+    });
+    window.addEventListener("drop", (e) => {
+        e.preventDefault();
+        const data = [];
+        const files = e.dataTransfer?.files;
+        if (files)
+            for (const file of files) {
+                data.push(file);
+            }
+        const evt = ipt_event_make(IptEventKind.Drop, { data });
+        event_queue.unshift(evt);
+    });
+    window.addEventListener("resize", (_) => {
+        const data = document.body.getBoundingClientRect();
+        const evt = ipt_event_make(IptEventKind.Resize, { width: data.width, height: data.height });
+        event_queue.unshift(evt);
+    });
+    for (const js_evt of _EVENTS) {
+        const kind = _JS_EVENT_TO_EVENT_KIND[js_evt];
+        if (kind === IptEventKind.Drop ||
+            kind === IptEventKind.Resize) {
+            continue;
+        }
+        window.addEventListener(js_evt, (evt_data) => {
+            //evt.preventDefault();
+            //evt.stopPropagation();
+            const evt = ipt_event_make(kind, {});
+            for (const field of _EVENT_FIELDS[js_evt]) {
+                evt.payload[field] = evt_data[field];
+            }
+            event_queue.unshift(evt);
+        });
+    }
+}
 const _EVENTS = [
     "pointerdown",
     "pointerup",
@@ -133,345 +200,139 @@ const _EVENT_FIELDS = {
 };
 const event_queue = [];
 let free_evt = [];
-function attach_listeners() {
-    for (const _evt of _EVENTS) {
-        document.body.addEventListener(_evt, (evt) => {
-            //evt.preventDefault();
-            //evt.stopPropagation();
-            const evt_data = {};
-            for (const field of _EVENT_FIELDS[_evt]) {
-                evt_data[field] = evt[field];
-            }
-            //const btn_data: Record<string, any> = {};
-            //if (_evt == "pointermove")
-            //{
-            //	btn_data["buttons"] = (evt as PointerEvent).buttons;
-            //	event_queue.unshift(["pointerup", btn_data]);
-            //}
-            event_queue.unshift([_evt, evt_data]);
-        });
-    }
+const _Cursor = {
+    position: Base.V2.Zero(),
+    buttons: [false, false, false],
+    wheel: Base.V2.Zero(),
+};
+export function next_event() {
+    return free_evt[0];
 }
-function dettach_listeners() {
-    for (const evt of _EVENTS) {
-        document.body.removeEventListener(evt, () => { });
+export function next_event_of(kind) {
+    if (next_event()?.kind === kind) {
+        return next_event();
+    }
+    return null;
+}
+export function consume_event() {
+    return free_evt.shift() || null;
+}
+export function consume_specific(kind) {
+    if (next_event()?.kind === kind) {
+        return consume_event();
+    }
+    return null;
+}
+export function cursor() {
+    return _Cursor;
+}
+export function is_pressed(btn) {
+    return KEYBOARD_PRESSED_MAP.get(btn) || false;
+}
+export function is_down(btn) {
+    let down = false;
+    switch (btn) {
+        case MBttn.M_LEFT:
+        case MBttn.M_RIGHT:
+        case MBttn.M_WHEEL:
+            {
+                down = _Cursor.buttons[btn];
+            }
+            break;
+        default:
+            {
+                down = KEYBOARD_STATE_MAP.get(btn) || false;
+            }
+            break;
+    }
+    return (down);
+}
+export function pool() {
+    KEYBOARD_PRESSED_MAP.clear();
+    while (event_queue.length) {
+        free_evt.shift();
+        const evt = event_queue.shift();
+        free_evt.unshift(evt);
+        switch (evt.kind) {
+            case IptEventKind.PointerDown:
+            case IptEventKind.PointerUp:
+                {
+                    const payload = evt.payload;
+                    const buttons = payload.buttons;
+                    _Cursor.buttons[MBttn.M_LEFT] = !!(buttons & 1);
+                    _Cursor.buttons[MBttn.M_RIGHT] = !!(buttons & 2);
+                    _Cursor.buttons[MBttn.M_WHEEL] = !!(buttons & 4);
+                }
+                break;
+            case IptEventKind.KeyUp:
+            case IptEventKind.KeyDown:
+                {
+                    const payload = evt.payload;
+                    const key_code = payload.keyCode;
+                    const repeat = payload.repeat;
+                    const is_key_down = evt.kind === IptEventKind.KeyDown;
+                    if (repeat === false) {
+                        if (!is_key_down && KEYBOARD_STATE_MAP.get(key_code)) {
+                            KEYBOARD_PRESSED_MAP.set(key_code, true);
+                        }
+                        KEYBOARD_STATE_MAP.set(key_code, is_key_down);
+                    }
+                }
+                break;
+            case IptEventKind.MouseOut:
+                {
+                    _Cursor.buttons[MBttn.M_LEFT] = false;
+                    _Cursor.buttons[MBttn.M_RIGHT] = false;
+                    _Cursor.buttons[MBttn.M_WHEEL] = false;
+                }
+                break;
+            case IptEventKind.PointerMove:
+                {
+                    const payload = evt.payload;
+                    _Cursor.position.x = payload.clientX;
+                    _Cursor.position.y = payload.clientY;
+                }
+                break;
+            default:
+                break;
+        }
     }
 }
 export function init() {
     attach_listeners();
-    const cursor = {
-        position: Base.V2.Zero(),
-        buttons: [false, false, false],
-        wheel: Base.V2.Zero(),
-    };
-    return {
-        cursor,
-        deinit: dettach_listeners,
-        pressed: function (btn) {
-            let r = false;
-            switch (btn) {
-                case KKey.KEY_W:
-                case KKey.KEY_A:
-                case KKey.KEY_S:
-                case KKey.KEY_D:
-                case KKey.KEY_E:
-                case KKey.KEY_LShift:
-                case KKey.KEY_LCtrl:
-                case KKey.KEY_Backspace:
-                case KKey.KEY_Tab:
-                case KKey.KEY_Enter:
-                case KKey.KEY_Shift:
-                case KKey.KEY_Ctrl:
-                case KKey.KEY_Alt:
-                case KKey.KEY_PauseBreak:
-                case KKey.KEY_CapsLock:
-                case KKey.KEY_Escape:
-                case KKey.KEY_PageUp:
-                case KKey.KEY_Space:
-                case KKey.KEY_PageDown:
-                case KKey.KEY_End:
-                case KKey.KEY_Home:
-                case KKey.KEY_ArrowLeft:
-                case KKey.KEY_ArrowUp:
-                case KKey.KEY_ArrowRight:
-                case KKey.KEY_ArrowDown:
-                case KKey.KEY_PrintScreen:
-                case KKey.KEY_Insert:
-                case KKey.KEY_Delete:
-                case KKey.KEY_0:
-                case KKey.KEY_1:
-                case KKey.KEY_2:
-                case KKey.KEY_3:
-                case KKey.KEY_4:
-                case KKey.KEY_5:
-                case KKey.KEY_6:
-                case KKey.KEY_7:
-                case KKey.KEY_8:
-                case KKey.KEY_9:
-                case KKey.KEY_A:
-                case KKey.KEY_B:
-                case KKey.KEY_C:
-                case KKey.KEY_D:
-                case KKey.KEY_E:
-                case KKey.KEY_F:
-                case KKey.KEY_G:
-                case KKey.KEY_H:
-                case KKey.KEY_I:
-                case KKey.KEY_J:
-                case KKey.KEY_K:
-                case KKey.KEY_L:
-                case KKey.KEY_M:
-                case KKey.KEY_N:
-                case KKey.KEY_O:
-                case KKey.KEY_P:
-                case KKey.KEY_Q:
-                case KKey.KEY_R:
-                case KKey.KEY_S:
-                case KKey.KEY_T:
-                case KKey.KEY_U:
-                case KKey.KEY_V:
-                case KKey.KEY_W:
-                case KKey.KEY_X:
-                case KKey.KEY_Y:
-                case KKey.KEY_Z:
-                case KKey.KEY_LeftWindowKey:
-                case KKey.KEY_RightWindowKey:
-                case KKey.KEY_SelectKey:
-                case KKey.KEY_Numpad0:
-                case KKey.KEY_Numpad1:
-                case KKey.KEY_Numpad2:
-                case KKey.KEY_Numpad3:
-                case KKey.KEY_Numpad4:
-                case KKey.KEY_Numpad5:
-                case KKey.KEY_Numpad6:
-                case KKey.KEY_Numpad7:
-                case KKey.KEY_Numpad8:
-                case KKey.KEY_Numpad9:
-                case KKey.KEY_Multiply:
-                case KKey.KEY_Add:
-                case KKey.KEY_Subtract:
-                case KKey.KEY_DecimalPoint:
-                case KKey.KEY_Divide:
-                case KKey.KEY_F1:
-                case KKey.KEY_F2:
-                case KKey.KEY_F3:
-                case KKey.KEY_F4:
-                case KKey.KEY_F5:
-                case KKey.KEY_F6:
-                case KKey.KEY_F7:
-                case KKey.KEY_F8:
-                case KKey.KEY_F9:
-                case KKey.KEY_F10:
-                case KKey.KEY_F11:
-                case KKey.KEY_F12:
-                case KKey.KEY_NumLock:
-                case KKey.KEY_ScrollLock:
-                case KKey.KEY_MyComputer:
-                case KKey.KEY_MyCalculator:
-                case KKey.KEY_SemiColon:
-                case KKey.KEY_EqualSign:
-                case KKey.KEY_Comma:
-                case KKey.KEY_Dash:
-                case KKey.KEY_Period:
-                case KKey.KEY_ForwardSlash:
-                case KKey.KEY_OpenBracket:
-                case KKey.KEY_BackSlash:
-                case KKey.KEY_CloseBracket:
-                case KKey.KEY_SingleQuote:
-                    {
-                        r = KEYBOARD_PRESSED_MAP.get(btn) || false;
-                        if (r) {
-                            KEYBOARD_PRESSED_MAP.set(btn, false);
-                        }
-                    }
-                    break;
-                default:
-                    break;
-            }
-            return (r);
-        },
-        is_down: function (btn) {
-            let r = false;
-            switch (btn) {
-                case MBttn.M_LEFT:
-                case MBttn.M_RIGHT:
-                case MBttn.M_WHEEL:
-                    {
-                        r = cursor.buttons[btn];
-                    }
-                    break;
-                case KKey.KEY_W:
-                case KKey.KEY_A:
-                case KKey.KEY_S:
-                case KKey.KEY_D:
-                case KKey.KEY_E:
-                case KKey.KEY_LShift:
-                case KKey.KEY_LCtrl:
-                case KKey.KEY_Backspace:
-                case KKey.KEY_Tab:
-                case KKey.KEY_Enter:
-                case KKey.KEY_Shift:
-                case KKey.KEY_Ctrl:
-                case KKey.KEY_Alt:
-                case KKey.KEY_PauseBreak:
-                case KKey.KEY_CapsLock:
-                case KKey.KEY_Escape:
-                case KKey.KEY_PageUp:
-                case KKey.KEY_Space:
-                case KKey.KEY_PageDown:
-                case KKey.KEY_End:
-                case KKey.KEY_Home:
-                case KKey.KEY_ArrowLeft:
-                case KKey.KEY_ArrowUp:
-                case KKey.KEY_ArrowRight:
-                case KKey.KEY_ArrowDown:
-                case KKey.KEY_PrintScreen:
-                case KKey.KEY_Insert:
-                case KKey.KEY_Delete:
-                case KKey.KEY_0:
-                case KKey.KEY_1:
-                case KKey.KEY_2:
-                case KKey.KEY_3:
-                case KKey.KEY_4:
-                case KKey.KEY_5:
-                case KKey.KEY_6:
-                case KKey.KEY_7:
-                case KKey.KEY_8:
-                case KKey.KEY_9:
-                case KKey.KEY_A:
-                case KKey.KEY_B:
-                case KKey.KEY_C:
-                case KKey.KEY_D:
-                case KKey.KEY_E:
-                case KKey.KEY_F:
-                case KKey.KEY_G:
-                case KKey.KEY_H:
-                case KKey.KEY_I:
-                case KKey.KEY_J:
-                case KKey.KEY_K:
-                case KKey.KEY_L:
-                case KKey.KEY_M:
-                case KKey.KEY_N:
-                case KKey.KEY_O:
-                case KKey.KEY_P:
-                case KKey.KEY_Q:
-                case KKey.KEY_R:
-                case KKey.KEY_S:
-                case KKey.KEY_T:
-                case KKey.KEY_U:
-                case KKey.KEY_V:
-                case KKey.KEY_W:
-                case KKey.KEY_X:
-                case KKey.KEY_Y:
-                case KKey.KEY_Z:
-                case KKey.KEY_LeftWindowKey:
-                case KKey.KEY_RightWindowKey:
-                case KKey.KEY_SelectKey:
-                case KKey.KEY_Numpad0:
-                case KKey.KEY_Numpad1:
-                case KKey.KEY_Numpad2:
-                case KKey.KEY_Numpad3:
-                case KKey.KEY_Numpad4:
-                case KKey.KEY_Numpad5:
-                case KKey.KEY_Numpad6:
-                case KKey.KEY_Numpad7:
-                case KKey.KEY_Numpad8:
-                case KKey.KEY_Numpad9:
-                case KKey.KEY_Multiply:
-                case KKey.KEY_Add:
-                case KKey.KEY_Subtract:
-                case KKey.KEY_DecimalPoint:
-                case KKey.KEY_Divide:
-                case KKey.KEY_F1:
-                case KKey.KEY_F2:
-                case KKey.KEY_F3:
-                case KKey.KEY_F4:
-                case KKey.KEY_F5:
-                case KKey.KEY_F6:
-                case KKey.KEY_F7:
-                case KKey.KEY_F8:
-                case KKey.KEY_F9:
-                case KKey.KEY_F10:
-                case KKey.KEY_F11:
-                case KKey.KEY_F12:
-                case KKey.KEY_NumLock:
-                case KKey.KEY_ScrollLock:
-                case KKey.KEY_MyComputer:
-                case KKey.KEY_MyCalculator:
-                case KKey.KEY_SemiColon:
-                case KKey.KEY_EqualSign:
-                case KKey.KEY_Comma:
-                case KKey.KEY_Dash:
-                case KKey.KEY_Period:
-                case KKey.KEY_ForwardSlash:
-                case KKey.KEY_OpenBracket:
-                case KKey.KEY_BackSlash:
-                case KKey.KEY_CloseBracket:
-                case KKey.KEY_SingleQuote:
-                    {
-                        r = KEYBOARD_STATE_MAP.get(btn) || false;
-                    }
-                    break;
-                default:
-                    break;
-            }
-            return (r);
-        },
-        next_event: function () {
-            return free_evt[0];
-        },
-        consume_event: function () {
-            free_evt.shift();
-        },
-        pool: function () {
-            while (event_queue.length) {
-                //free_evt.shift();
-                const evt = event_queue.shift();
-                free_evt.unshift(evt);
-                switch (evt[0]) {
-                    case "pointerdown":
-                    case "pointerup":
-                        {
-                            const buttons = evt[1].buttons;
-                            cursor.buttons[MBttn.M_LEFT] = !!(buttons & 1);
-                            cursor.buttons[MBttn.M_RIGHT] = !!(buttons & 2);
-                            cursor.buttons[MBttn.M_WHEEL] = !!(buttons & 4);
-                        }
-                        break;
-                    case "keyup":
-                    case "keydown":
-                        {
-                            const name = evt[0];
-                            const key_code = evt[1].keyCode;
-                            const repeat = evt[1].repeat;
-                            const is_key_down = (name === "keydown");
-                            if (repeat === false) {
-                                if (!is_key_down && KEYBOARD_STATE_MAP.get(key_code)) {
-                                    KEYBOARD_PRESSED_MAP.set(key_code, !is_key_down);
-                                }
-                                KEYBOARD_STATE_MAP.set(key_code, is_key_down);
-                            }
-                        }
-                        break;
-                    case "mouseout":
-                        {
-                            //if (!evt[1].relatedTarget && !evt[1].toElement) 
-                            //{
-                            cursor.buttons[MBttn.M_LEFT] = false;
-                            cursor.buttons[MBttn.M_RIGHT] = false;
-                            cursor.buttons[MBttn.M_WHEEL] = false;
-                        }
-                        break;
-                    case "pointermove":
-                        {
-                            cursor.position.x = evt[1].clientX;
-                            cursor.position.y = evt[1].clientY;
-                        }
-                        break;
-                    default:
-                        break;
-                }
-            }
-        }
-    };
+}
+export function deinit() {
+    for (const evt of _EVENTS) {
+        document.body.removeEventListener(evt, () => { });
+    }
+}
+export function debug_dump() {
+    Ui.attach_begin(Ui.UiAttachPos.BottomLeft);
+    Ui.push_next_width(Ui.size_fixed(300, 1));
+    Ui.push_next_height(Ui.size_fixed(300, 1));
+    Ui.push_next_palette(Palette.default_palette);
+    Ui.push_next_text_alignment(Ui.UiTextAlignment.Left);
+    Ui.push_next_child_axis(Ui.AxisY);
+    const wid = Ui.widget_make(`input-debug--dump`, Ui.UiDrawBackground | Ui.UiDrawBorder);
+    Ui.push_parent(wid);
+    Ui.push_font_size(20);
+    Ui.column_begin();
+    Ui.row_begin();
+    Ui.spacer(Ui.size_fixed(10));
+    Ui.push_next_width(Ui.size_text_content());
+    Ui.push_next_height(Ui.size_fixed(30));
+    Ui.widget_make(`input-debug--dump--event--qeue#events: ${event_queue.length}`, Ui.UiDrawText);
+    Ui.row_end();
+    Ui.column_end();
+    Ui.column_begin();
+    Ui.row_begin();
+    Ui.spacer(Ui.size_fixed(10));
+    Ui.push_next_width(Ui.size_text_content());
+    Ui.push_next_height(Ui.size_fixed(30));
+    Ui.widget_make(`input-debug--dump--free--event--qeue#free events: ${free_evt.length}`, Ui.UiDrawText);
+    Ui.row_end();
+    Ui.column_end();
+    Ui.pop_font_size();
+    Ui.pop_parent();
+    Ui.attach_end();
 }

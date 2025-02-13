@@ -97,7 +97,19 @@ export var PacketKind;
     PacketKind[PacketKind["PacketKind_Ping"] = 2] = "PacketKind_Ping";
     PacketKind[PacketKind["PacketKind_Pong"] = 4] = "PacketKind_Pong";
     PacketKind[PacketKind["PacketKind_RequestSpriteInfo"] = 8] = "PacketKind_RequestSpriteInfo";
+    PacketKind[PacketKind["PacketKind_AuthenticationClient"] = 16] = "PacketKind_AuthenticationClient";
+    PacketKind[PacketKind["PacketKind_Ok"] = 32] = "PacketKind_Ok";
+    PacketKind[PacketKind["PacketKind_AuthenticationServer"] = 64] = "PacketKind_AuthenticationServer";
 })(PacketKind || (PacketKind = {}));
+export const packet_kind_to_string = {
+    [PacketKind.PacketKind_SpriteInfo]: "<SPRITE INFO>",
+    [PacketKind.PacketKind_Ping]: "<PING>",
+    [PacketKind.PacketKind_Pong]: "<PONG>",
+    [PacketKind.PacketKind_RequestSpriteInfo]: "<REQUEST SPRITE INFO>",
+    [PacketKind.PacketKind_AuthenticationClient]: "<AUTHENTICATION CLIENT>",
+    [PacketKind.PacketKind_Ok]: "<OK>",
+    [PacketKind.PacketKind_AuthenticationServer]: "<AUTHENTICATION SERVER>"
+};
 var AgentKind;
 (function (AgentKind) {
     AgentKind[AgentKind["AgentKind_Server"] = 1] = "AgentKind_Server";
@@ -141,24 +153,34 @@ export function packet_pong_make() {
     packet.size = 8 + agent_size(packet.agent) + PingPongSize;
     return (packet);
 }
+export function packet_authentication_client_make(username, password) {
+    const packet = {};
+    packet.agent = agent_anonymous_make();
+    packet.kind = PacketKind.PacketKind_AuthenticationClient;
+    packet.payload = {
+        username_len: username.length,
+        username,
+        password_len: password.length,
+        password
+    };
+    packet.size = 8 + agent_size(packet.agent) + packet.payload.password_len +
+        packet.payload.username_len + 8;
+    return packet;
+}
 export const PingPacket = packet_ping_make();
 export const PongPacket = packet_pong_make();
-export function packet_request_sprite_info_make(source_file) {
+export function packet_request_sprite_info_make(source_file = null) {
     const packet = {};
     packet.agent = agent_anonymous_make();
     packet.kind = PacketKind.PacketKind_RequestSpriteInfo;
+    const len = source_file ? source_file.length : 0;
     packet.payload = {
-        source_file,
-        length: source_file.length
+        source_file: source_file ? source_file : "",
+        length: len
     };
-    packet.size = 8 + agent_size(packet.agent) + 4 + source_file.length;
+    packet.size = 8 + agent_size(packet.agent) + 4 + len;
     return (packet);
 }
-// order ->
-// size
-// kind
-// agent
-// packet specific data
 export function packet_serialize(packet) {
     const buffer = new ArrayBuffer(packet.size);
     const dv = new DataView(buffer);
@@ -202,6 +224,13 @@ export function packet_serialize(packet) {
                 write_s8(dv, offset, payload.name);
             }
             break;
+        case PacketKind.PacketKind_AuthenticationClient: {
+            const payload = (packet.payload);
+            offset = write_u32(dv, offset, payload.username_len);
+            offset = write_s8(dv, offset, payload.username);
+            offset = write_u32(dv, offset, payload.password_len);
+            write_s8(dv, offset, payload.password);
+        }
         default:
             {
             }
@@ -225,6 +254,22 @@ export function packet_pongping_deserialize(dv, offset = 0) {
     const [length, offseta] = read_u32(dv, offset);
     const [msg, _] = read_s8(dv, offseta, length);
     return { msg, length };
+}
+export function packet_authentication_server_deserialize(dv, offset = 0) {
+    const [user_id, offseta] = read_u64(dv, offset);
+    const [is_admin, offsetb] = read_u8(dv, offseta);
+    const [username_len, offsetc] = read_u32(dv, offsetb);
+    const [username, offsetd] = read_s8(dv, offsetc, username_len);
+    const [created_at_len, offsete] = read_u32(dv, offsetd);
+    const [created_at, _] = read_s8(dv, offsete, created_at_len);
+    return {
+        user_id,
+        is_admin,
+        username_len,
+        username,
+        created_at_len,
+        created_at
+    };
 }
 export function packet_sprite_info_deserialize(dv, offset = 0) {
     // TODO(rnoba): make this better ;-;
@@ -263,18 +308,34 @@ export function packet_deserialize(data) {
     packet.size = dv.getUint32(0, true);
     packet.kind = dv.getUint32(4, true);
     packet.agent = agent_deserialize(dv, 8);
+    const offset = 8 + agent_size(packet.agent);
     switch (packet.kind) {
         case PacketKind.PacketKind_Ping:
         case PacketKind.PacketKind_Pong:
             {
-                packet.payload = packet_pongping_deserialize(dv, 8 + agent_size(packet.agent));
+                packet.payload = packet_pongping_deserialize(dv, offset);
             }
             break;
         case PacketKind.PacketKind_SpriteInfo:
             {
-                packet.payload = packet_sprite_info_deserialize(dv, 8 + agent_size(packet.agent));
+                packet.payload = packet_sprite_info_deserialize(dv, offset);
             }
             break;
+        case PacketKind.PacketKind_Ok:
+            {
+                const [ok, offseta] = read_u8(dv, offset);
+                const [ctx, _] = read_u32(dv, offseta);
+                const payload = {
+                    ok,
+                    ctx
+                };
+                packet.payload = payload;
+            }
+            break;
+        case PacketKind.PacketKind_AuthenticationServer:
+            {
+                packet.payload = packet_authentication_server_deserialize(dv, offset);
+            }
         default:
             {
             }

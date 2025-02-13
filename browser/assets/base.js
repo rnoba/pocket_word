@@ -4,25 +4,45 @@ export let GlobalContext = null;
 export function set_global_ctx(ctx) {
     GlobalContext = ctx;
 }
+export var Directions;
+(function (Directions) {
+    Directions[Directions["N"] = 0] = "N";
+    Directions[Directions["NW"] = 1] = "NW";
+    Directions[Directions["W"] = 2] = "W";
+    Directions[Directions["SW"] = 3] = "SW";
+    Directions[Directions["S"] = 4] = "S";
+    Directions[Directions["SE"] = 5] = "SE";
+    Directions[Directions["E"] = 6] = "E";
+    Directions[Directions["NE"] = 7] = "NE";
+})(Directions || (Directions = {}));
 export class V2 {
     x;
     y;
-    constructor(x, y) {
+    w;
+    constructor(x, y, w = 0) {
         this.x = x;
         this.y = y;
+        this.w = w;
     }
     static Zero() {
         return new V2(0, 0);
     }
-    static New(x, y) {
-        return new V2(x, y);
+    static New(x, y, w = 0) {
+        return new V2(x, y, w);
     }
     clone() {
-        return new V2(this.x, this.y);
+        return new V2(this.x, this.y, this.w);
     }
     set(b) {
         this.x = b.x;
         this.y = b.y;
+        this.w = b.w;
+        return this;
+    }
+    setn(x, y, w = 0) {
+        this.x = x;
+        this.y = y;
+        this.w = w;
         return this;
     }
     len() {
@@ -85,8 +105,13 @@ export class V2 {
         return this;
     }
     floor() {
-        this.x = Math.floor(this.x);
-        this.y = Math.floor(this.y);
+        this.x = Floor(this.x);
+        this.y = Floor(this.y);
+        return this;
+    }
+    round() {
+        this.x = Round(this.x);
+        this.y = Round(this.y);
         return this;
     }
     world(z = 0) {
@@ -124,6 +149,25 @@ export const RGBA_FULL_BLUE = RGBA(0, 0, 255);
 export const RGBA_FULL_BLACK = RGBA(0, 0, 0);
 export const RGBA_FULL_WHITE = RGBA(255, 255, 255);
 const HEX = "0123456789ABCDEF";
+function hex_get_place(c) {
+    let i = 0;
+    for (i; i < 15; i += 1) {
+        if (HEX[i] === c.toUpperCase())
+            break;
+    }
+    return i;
+}
+export function Hex(color) {
+    assert((color.length === 7 || color.length === 9) && color[0] === '#');
+    const R = hex_get_place(color[2]) + hex_get_place(color[1]) * 16;
+    const G = hex_get_place(color[4]) + hex_get_place(color[3]) * 16;
+    const B = hex_get_place(color[6]) + hex_get_place(color[5]) * 16;
+    let A = 255;
+    if (color.length === 9) {
+        A = hex_get_place(color[8]) + hex_get_place(color[7]) * 16;
+    }
+    return RGBA(R, G, B, A / 255);
+}
 function ntox(n) {
     let r = "";
     do {
@@ -138,32 +182,39 @@ export function RGBA_to_hex_string(color) {
 export function RGBA_to_css_string(color) {
     return `rgba(${color.r}, ${color.g}, ${color.b}, ${color.a})`;
 }
-export function camera_transform_screen(camera, x, y, z, offset_x = 0, offset_y = 0) {
-    const result = V2.Zero();
-    result.x = x;
-    result.y = y;
-    result.screen(z)
+export function camera_transform_screen(camera, x, y, z, out, offset_x = 0, offset_y = 0) {
+    out.x = x;
+    out.y = y;
+    out
+        .screen(z)
         .add2(offset_x, offset_y)
         .sub2(camera.x, camera.y)
-        .scale(camera.scaling)
+        .scale(camera.zoom)
         .add2(camera.width * 0.5, camera.height * 0.5);
-    return result;
+    return out;
 }
-export function camera_transform_world(camera, x, y, z, offset_x = 0, offset_y = 0) {
-    const result = V2.Zero();
-    result.x = x - camera.width * 0.5;
-    result.y = y - camera.height * 0.5;
-    result.scale(1 / camera.scaling)
+export function camera_transform_world(camera, x, y, z, out, offset_x = 0, offset_y = 0) {
+    out.x = x - camera.width * 0.5;
+    out.y = y - camera.height * 0.5;
+    out.scale(1 / camera.zoom)
         .add2(camera.x, camera.y)
         .sub2(offset_x, offset_y)
         .world(z);
-    return result;
+    return out;
 }
 export function mod(n, m) {
     return (n % m + m) % m;
 }
-export function clamp(min, max, value) {
-    return Math.max(min, Math.min(max, value));
+export function point_in_rect_ui(x, y, rect) {
+    const rect_end_x = rect.pos[0] + rect.size[0];
+    const rect_end_y = rect.pos[1] + rect.size[1];
+    if ((x < rect.pos[0] ||
+        y < rect.pos[1]) ||
+        (x > rect_end_x ||
+            y > rect_end_y)) {
+        return (false);
+    }
+    return (true);
 }
 export function point_in_rect(point, rect) {
     const rect_end_x = rect.position.x + rect.width;
@@ -208,51 +259,31 @@ export function Floor(n) {
     return (n >> 0);
 }
 export function Round(n) {
-    return (Floor(n + 0.5));
+    let sign = n < 0 ? -1 : 1;
+    return (sign * Floor(Math.abs(n) + 0.5));
 }
 export function Clamp(value, min, max) {
     return (Math.min(Math.max(value, min), max));
 }
-const UINT64_MAX = 2n ** 64n;
-// i dont care
-export function u64(value) {
-    return BigInt(value) % UINT64_MAX;
-}
-export const u640 = u64(0);
+export const u640 = 0; //u64(0);
+const cache = new Map();
 const InitialFNV = 2166136261;
 const FNVMultiple = 16777619;
 export function hash_string(str, seed = 0) {
-    let hash = BigInt(InitialFNV) * BigInt(seed);
-    for (let i = 0; i < str.length; i++) {
-        hash = hash ^ BigInt(str.charCodeAt(i));
-        hash = (hash * BigInt(FNVMultiple)) % UINT64_MAX;
+    const cached = cache.get(str);
+    if (cached) {
+        return cached;
     }
+    let hash = InitialFNV * seed;
+    for (let i = 0; i < str.length; i++) {
+        hash = hash ^ str.charCodeAt(i);
+        hash = (hash * FNVMultiple) & 0xffffffffffff;
+    }
+    cache.set(str, hash);
     return hash;
 }
 export function has_flag(value, flag) {
     return (value & flag) === flag;
-}
-export function very_stupid_array_push_front(item, array) {
-    let push = true;
-    for (let i = 0; i < array.length; i++) {
-        if (array[i] === item) {
-            push = false;
-        }
-    }
-    if (push) {
-        array.unshift(item);
-    }
-}
-export function very_stupid_array_push_back(item, array) {
-    let push = true;
-    for (let i = 0; i < array.length; i++) {
-        if (array[i] === item) {
-            push = false;
-        }
-    }
-    if (push) {
-        array.push(item);
-    }
 }
 export async function load_fonts() {
     const fonts = [
@@ -260,6 +291,8 @@ export async function load_fonts() {
         { family: "PixelGame", file: "./Pixel_Game.otf" },
         { family: "Gameday", file: "./gameday_regular.otf" },
         { family: "GamesStudios", file: "./games_studios_regular.otf" },
+        { family: "Monitorica", file: "./Fonts/Monitorica/Monitorica-It.ttf" },
+        { family: "Repo", file: "./Fonts/Repo/Repo-Bold.otf" }
     ];
     for (const { family, file } of fonts) {
         const font_face = new FontFace(family, `url(${file})`);
@@ -274,4 +307,193 @@ export async function load_fonts() {
 }
 export function Fixed(float, places) {
     return (Number((Round(float * (10 * places)) / (10 * places)).toFixed(places)));
+}
+export function stack_empty() {
+    return {
+        value: null,
+        top: null,
+        free: null,
+        pop: false
+    };
+}
+export function stack_init(v) {
+    return {
+        value: null,
+        top: { value: v, next: null },
+        free: null,
+        pop: false
+    };
+}
+export function stack_node_empty() {
+    return {
+        value: null,
+        next: null
+    };
+}
+export function stack_node_init(v) {
+    return {
+        value: v,
+        next: null
+    };
+}
+export function stack_pop(stack) {
+    const node = stack.top;
+    if (node != null) {
+        stack.top = stack.top.next;
+        node.next = stack.free;
+        stack.free = node;
+    }
+    stack.pop = false;
+    return (node);
+}
+export function stack_push_set_pop(stack, next) {
+    let node = stack.free;
+    if (node !== null) {
+        stack.free = stack.free.next;
+    }
+    else {
+        node = stack_node_empty();
+    }
+    const prev_top = stack.top;
+    node.value = next;
+    node.next = stack.top;
+    stack.top = node;
+    stack.pop = true;
+    return (prev_top);
+}
+export function stack_remove_node(stack, rnode) {
+    if (rnode === stack.top) {
+        stack_pop(stack);
+        return;
+    }
+    let head = stack.top;
+    for (; head !== null && head.next !== rnode; head = head.next) { }
+    if (head && head.next === rnode) {
+        head.next = rnode.next;
+    }
+}
+export function stack_it(stack, fn) {
+    let idx = 0;
+    for (let node = stack.top; node !== null; idx += 1) {
+        const next = node.next;
+        fn(node.value, idx, node);
+        node = next;
+    }
+}
+export function stack_push(stack, next) {
+    let node = stack.free;
+    if (node !== null) {
+        stack.free = stack.free.next;
+    }
+    else {
+        node = stack_node_empty();
+    }
+    const prev_top = stack.top;
+    node.value = next;
+    node.next = stack.top;
+    stack.top = node;
+    stack.pop = false;
+    return (prev_top);
+}
+export function dll_insert_pos(pointers, pos, new_node) {
+    if (pointers.first === null) {
+        // no nodes in in the list
+        // set pointers.first and pointers.last
+        pointers.first = pointers.last = new_node;
+        new_node.next = null;
+        new_node.prev = null;
+    }
+    else if (pos === null) {
+        // insert node at beginning
+        new_node.next = pointers.first;
+        pointers.first.prev = new_node;
+        pointers.first = new_node;
+        new_node.prev = null;
+    }
+    else if (pos === pointers.last) {
+        // insert node at end
+        pointers.last.next = new_node;
+        new_node.prev = pointers.last;
+        pointers.last = new_node;
+        new_node.next = null;
+    }
+    else {
+        // insert node at middle 
+        if (pos.next !== null) {
+            pos.next.prev = new_node;
+        }
+        new_node.next = pos.next;
+        pos.next = new_node;
+        new_node.prev = pos;
+    }
+}
+export function dll_insert_back(pointers, new_node) {
+    dll_insert_pos(pointers, pointers.last, new_node);
+}
+export function rect_clip(clip, target) {
+    const tx0 = target.pos[0];
+    const ty0 = target.pos[1];
+    const tx1 = tx0 + target.size[0];
+    const ty1 = ty0 + target.size[1];
+    const cx0 = clip.pos[0];
+    const cy0 = clip.pos[1];
+    const cx1 = cx0 + clip.size[0];
+    const cy1 = cy0 + clip.size[1];
+    if (point_in_rect_ui(cx0, cy0, target) &&
+        point_in_rect_ui(cx1, cy1, target)) {
+        return clip;
+    }
+    const ix0 = Math.max(tx0, cx0);
+    const iy0 = Math.max(ty0, cy0);
+    const ix1 = Math.min(tx1, cx1);
+    const iy1 = Math.min(ty1, cy1);
+    const out = { size: [0, 0], pos: [0, 0] };
+    if (ix1 > ix0 && iy1 > iy0) {
+        out.pos = [ix0, iy0];
+        out.size = [ix1 - ix0, iy1 - iy0];
+    }
+    return (out);
+}
+export function align_pow2(a, b) {
+    a = Floor(a);
+    b = Floor(b);
+    return (a + b - 1) & ~(b - 1);
+}
+export function face_to_screen(camera, face, tw = 0, th = 0) {
+    return face.map((v) => camera_transform_screen(camera, v.x + tw, v.y + th, v.w, V2.Zero()));
+}
+const d1 = V2.Zero();
+const d2 = V2.Zero();
+const d3 = V2.Zero();
+const d4 = V2.Zero();
+const e1 = V2.Zero();
+const e2 = V2.Zero();
+const e3 = V2.Zero();
+const e4 = V2.Zero();
+export function point_in_convex_quadrilateral(point, face) {
+    e1.set(face[1]).sub(face[0]);
+    e2.set(face[2]).sub(face[1]);
+    e3.set(face[3]).sub(face[2]);
+    e4.set(face[0]).sub(face[3]);
+    d1.set(point);
+    d2.set(point);
+    d3.set(point);
+    d4.set(point);
+    d1.sub(face[0]);
+    d2.sub(face[1]);
+    d3.sub(face[2]);
+    d4.sub(face[3]);
+    const c1 = e1.cross(d1);
+    const c2 = e2.cross(d2);
+    const c3 = e3.cross(d3);
+    const c4 = e4.cross(d4);
+    return (c1 > 0 && c2 > 0 && c3 > 0 && c4 > 0) ||
+        (c1 < 0 && c2 < 0 && c3 < 0 && c4 < 0);
+}
+//lol
+export function Ptr(v = null) {
+    return { value: v };
+}
+export function PtrIsNil(v) {
+    return v.value === null;
 }

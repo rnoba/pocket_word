@@ -162,6 +162,27 @@ export const RGBA_FULL_WHITE = RGBA(255, 255, 255);
 
 const HEX = "0123456789ABCDEF";
 
+function hex_get_place(c: string)
+{
+	let i = 0;
+	for (i; i < 15; i += 1)
+	{
+		if (HEX[i] === c.toUpperCase()) break;
+	}
+	return i;
+}
+
+export function Hex(color: string): RGBA 
+{
+	assert((color.length === 7 || color.length === 9) && color[0] === '#');
+	const R = hex_get_place(color[2]) + hex_get_place(color[1]) * 16;
+	const G = hex_get_place(color[4]) + hex_get_place(color[3]) * 16;
+	const B = hex_get_place(color[6]) + hex_get_place(color[5]) * 16;
+	let		A = 255;
+	if (color.length === 9) { A = hex_get_place(color[8]) + hex_get_place(color[7]) * 16; }
+	return RGBA(R, G, B, A/255);
+}
+
 function ntox(n: number): string
 {
 	let r: string = "";
@@ -327,13 +348,6 @@ export function Clamp(value: number, min: number, max: number): number {
 	return (Math.min(Math.max(value, min), max));
 }
 
-const UINT64_MAX	= 2n**64n;
-
-// i dont care
-export function u64(value: number | bigint | string): bigint {
-	return BigInt(value) % UINT64_MAX;
-}
-
 export const u640 = 0;//u64(0);
 
 const cache: Map<string, number> = new Map();
@@ -357,40 +371,6 @@ export function has_flag(value: number, flag: number): boolean {
     return (value & flag) === flag;
 }
 
-export function very_stupid_array_push_front<T>(item: T, array: Array<T>)
-{
-	let push = true;
-	for (let i = 0; i < array.length; i++)
-	{
-		if (array[i] === item)
-		{
-			push = false;
-		}
-	}
-
-	if (push)
-	{
-		array.unshift(item);
-	}
-}
-
-export function very_stupid_array_push_back<T>(item: T, array: Array<T>)
-{
-	let push = true;
-	for (let i = 0; i < array.length; i++)
-	{
-		if (array[i] === item)
-		{
-			push = false;
-		}
-	}
-
-	if (push)
-	{
-		array.push(item);
-	}
-}
-
 export async function load_fonts()
 {
 	const fonts = [
@@ -398,6 +378,8 @@ export async function load_fonts()
 		{ family: "PixelGame", file: "./Pixel_Game.otf" },
 		{ family: "Gameday", file: "./gameday_regular.otf" },
 		{ family: "GamesStudios", file: "./games_studios_regular.otf" },
+		{ family: "Monitorica", file: "./Fonts/Monitorica/Monitorica-It.ttf" },
+		{ family: "Repo", file: "./Fonts/Repo/Repo-Bold.otf" }
 	];
 
 	for (const {family, file} of fonts)
@@ -427,7 +409,7 @@ export type Stack<T> =
 	{
 		value:	T,
 		top:		StackNode<T>,
-		// used to avoid recreating a node every time
+		// used to avoid recreating nodes every time
 		free:		StackNode<T>
 		pop:		boolean;
 	}
