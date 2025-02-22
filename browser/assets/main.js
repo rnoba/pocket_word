@@ -1,10 +1,7 @@
 import * as Sprite from "./sprite.js";
 import * as Base from "./base.js";
 import * as Input from "./input.js";
-import * as Ui from "./ui.js";
-import * as WS from "./socket.js";
 import * as Packet from "./packet.js";
-import * as Editor from "./editor.js";
 import * as Widget from "./widgets.js";
 function user_is_anonymous(user_id) {
     return user_id === Packet.ANONYMOUS_ID;
@@ -21,56 +18,29 @@ function user_is_offline(user) {
     if (ctx === null) {
         throw new Error("Canvas 2D context not supported");
     }
-    //ctx.imageSmoothingEnabled = false;
-    Base.set_global_ctx(ctx);
     const { width, height } = document.body.getBoundingClientRect();
     canvas.width = width;
     canvas.height = height;
+    Base.set_global_ctx(ctx);
     await Base.load_fonts();
-    const sprites = await Sprite.load();
-    const camera = {
-        width,
-        height,
-        x: 0,
-        y: 0,
-        z: 0,
-        world_position: Base.V2.Zero(),
-        zoom: 1,
-        is_locked: true,
+    await Sprite.load_sources();
+    const pocket_world = {
+        camera: Base.camera_zero(),
     };
-    const socket = WS.connect();
+    pocket_world.camera.width = width;
+    pocket_world.camera.height = height;
     Input.init();
-    //Ui.ui_init(socket);
-    const p = Packet.packet_authentication_client_make("rnoba", "batatinha");
-    //Ui.Init(socket);
-    WS.add_listener(Packet.PacketKind.PacketKind_Pong, function (packet) {
-        setTimeout(() => {
-            WS.send_packet(socket, Packet.PingPacket);
-        }, 10000);
-    });
-    WS.add_listener(Packet.PacketKind.PacketKind_Ok, function (packet) {
-        const payload = packet.payload;
-        console.log("OK: ", payload.ok, Packet.packet_kind_to_string[payload.ctx]);
-    });
-    WS.add_listener(Packet.PacketKind.PacketKind_AuthenticationServer, function (packet) {
-        const payload = packet.payload;
-        console.log(packet.payload);
-    });
-    Editor.editor_set_size(width, height);
-    ctx.fillStyle = "#FFFFFF";
     function draw(dt) {
         Input.pool();
         const evt = Input.consume_specific(Input.IptEventKind.Resize);
         if (evt) {
             const { width, height } = evt.payload;
-            canvas.width = innerWidth;
-            canvas.height = innerHeight;
+            pocket_world.camera.width = width;
+            pocket_world.camera.height = height;
+            canvas.width = width;
+            canvas.height = height;
         }
-        Ui.ui_frame_begin(dt, canvas.width, canvas.height);
-        Input.debug_dump();
-        Widget.inventory();
-        Ui.ui_frame_end();
-        //Editor.editor(dt, sprites);
+        Widget.editor(dt, pocket_world);
     }
     let prev_timestamp = 0;
     const frame = (timestamp) => {

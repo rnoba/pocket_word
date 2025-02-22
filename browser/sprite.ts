@@ -95,22 +95,24 @@ async function collect_sprites(size: number, image: HTMLImageElement): Promise<A
 	return (await Promise.all(promises));
 }
 
-export async function load(): Promise<SpriteSource>
-{
-	//const image_test	= await load_image("./test.png");
-	//const image_test_2	= await load_image("./test_2.png");
-	//const sprites = await collect_sprites(Base.TW, image);
+export const sprite_sources: SpriteSource[] = [];
 
-	//const scale_x = 800/image.width;
-	//const scale_y = 600/image.height;
-	//const source_bitmap_original_test = await createImageBitmap(image_test, 0, 0, image_test.width, image_test.height);
-	//const source_bitmap_original_test_2 = await createImageBitmap(image_test_2, 0, 0, image_test_2.width, image_test_2.height);
-	const image	= await load_image("./test6.png");
-	const source_bitmap_original = await createImageBitmap(image, 0, 0, image.width, image.height);
-	return source_bitmap_original;
+export async function load_sources()
+{
+	const files = ["./test6.png"];
+
+	for (const file of files)
+	{
+		const bitmap = await load_image(file);
+		sprite_sources.push({
+			id: file,
+			bitmap
+		});
+
+	}
 }
 
-export type SpriteSource = HTMLImageElement | ImageBitmap;
+export type SpriteSource = { id: string, bitmap: HTMLImageElement | ImageBitmap };
 
 export function draw_from_image(
 	ctx:		CanvasRenderingContext2D,
@@ -130,7 +132,7 @@ export function draw_from_image(
 	const sprite_size_y = sprite.rect.height * camera.zoom;
 	//console.log(sprite.rect.position.x, sprite.rect.position.y, Base.Floor(sprite_size_x), Base.Floor(sprite_size_y));
 	ctx.drawImage(
-		src,
+		src.bitmap,
 		Base.Floor(sprite.rect.position.x),
 		Base.Floor(sprite.rect.position.y),
 		Base.Floor(sprite.rect.width),
@@ -156,7 +158,7 @@ export function draw_from_image_(
 	const height	= Base.align_pow2(sprite.rect.height	* scaling, 2);
 	//const width		= sprite.rect.width;
 	//const height	= sprite.rect.height;
-	ctx.drawImage(src,
+	ctx.drawImage(src.bitmap,
 								sprite.rect.position.x,
 								sprite.rect.position.y,
 								sprite.rect.width,

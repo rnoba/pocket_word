@@ -380,34 +380,32 @@ export function deinit()
 
 export function debug_dump()
 {
-	Ui.attach_begin(Ui.UiAttachPos.BottomLeft);
-		Ui.push_next_width(Ui.size_fixed(300, 1));
-		Ui.push_next_height(Ui.size_fixed(300, 1));
-		Ui.push_next_palette(Palette.default_palette);
-		Ui.push_next_text_alignment(Ui.UiTextAlignment.Left);
-		Ui.push_next_child_axis(Ui.AxisY);
+	Ui.push_next_width(Ui.size_fixed(300, 1));
+	Ui.push_next_height(Ui.size_fixed(300, 1));
+	Ui.push_next_palette(Palette.pastel);
+	Ui.push_next_text_alignment(Ui.UiTextAlignment.Left);
+	Ui.push_next_child_axis(Ui.AxisY);
 
-		const wid = Ui.widget_make(`input-debug--dump`, Ui.UiDrawBackground|Ui.UiDrawBorder);
-		Ui.push_parent(wid);
-			Ui.push_font_size(20);
-				Ui.column_begin();
-				Ui.row_begin();
-				Ui.spacer(Ui.size_fixed(10));
-					Ui.push_next_width(Ui.size_text_content());
-					Ui.push_next_height(Ui.size_fixed(30));
-					Ui.widget_make(`input-debug--dump--event--qeue#events: ${event_queue.length}`, Ui.UiDrawText);
-				Ui.row_end();
-				Ui.column_end();
+	const wid = Ui.widget_make(`input-debug--dump`, Ui.UiDrawBackground|Ui.UiDrawBorder);
+	Ui.push_parent(wid);
+		Ui.push_font_size(20);
+			Ui.column_begin();
+			Ui.row_begin();
+			Ui.spacer(Ui.size_fixed(10));
+				Ui.push_next_width(Ui.size_text_content());
+				Ui.push_next_height(Ui.size_fixed(30));
+				Ui.widget_make(`input-debug--dump--event--qeue#events: ${event_queue.length}`, Ui.UiDrawText);
+			Ui.row_end();
+			Ui.column_end();
 
-				Ui.column_begin();
-				Ui.row_begin();
-				Ui.spacer(Ui.size_fixed(10));
-					Ui.push_next_width(Ui.size_text_content());
-					Ui.push_next_height(Ui.size_fixed(30));
-					Ui.widget_make(`input-debug--dump--free--event--qeue#free events: ${free_evt.length}`, Ui.UiDrawText);
-				Ui.row_end();
-				Ui.column_end();
-			Ui.pop_font_size();
-		Ui.pop_parent();
-	Ui.attach_end();
+			Ui.column_begin();
+			Ui.row_begin();
+			Ui.spacer(Ui.size_fixed(10));
+				Ui.push_next_width(Ui.size_text_content());
+				Ui.push_next_height(Ui.size_fixed(30));
+				Ui.widget_make(`input-debug--dump--free--event--qeue#free events: ${free_evt.length}`, Ui.UiDrawText);
+			Ui.row_end();
+			Ui.column_end();
+		Ui.pop_font_size();
+	Ui.pop_parent();
 }

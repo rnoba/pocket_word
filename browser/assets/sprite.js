@@ -48,17 +48,16 @@ async function collect_sprites(size, image) {
     }
     return (await Promise.all(promises));
 }
-export async function load() {
-    //const image_test	= await load_image("./test.png");
-    //const image_test_2	= await load_image("./test_2.png");
-    //const sprites = await collect_sprites(Base.TW, image);
-    //const scale_x = 800/image.width;
-    //const scale_y = 600/image.height;
-    //const source_bitmap_original_test = await createImageBitmap(image_test, 0, 0, image_test.width, image_test.height);
-    //const source_bitmap_original_test_2 = await createImageBitmap(image_test_2, 0, 0, image_test_2.width, image_test_2.height);
-    const image = await load_image("./test6.png");
-    const source_bitmap_original = await createImageBitmap(image, 0, 0, image.width, image.height);
-    return source_bitmap_original;
+export const sprite_sources = [];
+export async function load_sources() {
+    const files = ["./test6.png"];
+    for (const file of files) {
+        const bitmap = await load_image(file);
+        sprite_sources.push({
+            id: file,
+            bitmap
+        });
+    }
 }
 export function draw_from_image(ctx, src, sprite, camera, x, y, z) {
     const offset_x = sprite.offset_x - (Base.TW / 2);
@@ -68,7 +67,7 @@ export function draw_from_image(ctx, src, sprite, camera, x, y, z) {
     const sprite_size_x = sprite.rect.width * camera.zoom;
     const sprite_size_y = sprite.rect.height * camera.zoom;
     //console.log(sprite.rect.position.x, sprite.rect.position.y, Base.Floor(sprite_size_x), Base.Floor(sprite_size_y));
-    ctx.drawImage(src, Base.Floor(sprite.rect.position.x), Base.Floor(sprite.rect.position.y), Base.Floor(sprite.rect.width), Base.Floor(sprite.rect.height), Base.Floor(dest.x), Base.Floor(dest.y), Base.Floor(sprite_size_x), Base.Floor(sprite_size_y));
+    ctx.drawImage(src.bitmap, Base.Floor(sprite.rect.position.x), Base.Floor(sprite.rect.position.y), Base.Floor(sprite.rect.width), Base.Floor(sprite.rect.height), Base.Floor(dest.x), Base.Floor(dest.y), Base.Floor(sprite_size_x), Base.Floor(sprite_size_y));
 }
 export function draw_from_image_(ctx, src, sprite, sx, sy, scaling = 1) {
     //ctx.save();
@@ -77,6 +76,6 @@ export function draw_from_image_(ctx, src, sprite, sx, sy, scaling = 1) {
     const height = Base.align_pow2(sprite.rect.height * scaling, 2);
     //const width		= sprite.rect.width;
     //const height	= sprite.rect.height;
-    ctx.drawImage(src, sprite.rect.position.x, sprite.rect.position.y, sprite.rect.width, sprite.rect.height, Base.Floor(sx), Base.Floor(sy), width, height);
+    ctx.drawImage(src.bitmap, sprite.rect.position.x, sprite.rect.position.y, sprite.rect.width, sprite.rect.height, Base.Floor(sx), Base.Floor(sy), width, height);
     //ctx.restore();
 }

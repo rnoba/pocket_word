@@ -13,5 +13,3 @@ pkgs.mkShell {
 		nodePackages_latest.typescript-language-server
   ];
 }
-
-

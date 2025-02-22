@@ -22,12 +22,10 @@ export function send_packet(socket: WebSocket, packet: Packet.Packet)
 {
 	if (socket && socket.readyState === WebSocket.OPEN)
 	{
-		if (packet.kind === Packet.PacketKind.PacketKind_Ping)
-		{
-			last_ping_sent = performance.now();
-		}
-		console.log(`sending packet ${Packet.packet_kind_to_string[packet.kind as Packet.PacketKind]}`);
-		const data = Packet.packet_serialize(packet); 
+		if (packet.kind === Packet.PacketKind.PacketKind_Ping) { last_ping_sent = performance.now(); }
+
+		console.log(`sending packet ${Packet.packet_kind_to_string[packet.kind]}`);
+		const data = Packet.packet_serialize(packet);
 		socket.send(data);
 	}
 }

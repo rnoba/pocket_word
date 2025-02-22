@@ -122,12 +122,12 @@ export function push_height(size: AxisSize)
 
 export function push_next_bitmap(bitmap: Sprite.SpriteSource)
 {
-	Base.stack_push_set_pop(ui_state.bitmap_stack, bitmap);
+	Base.stack_push_set_pop(ui_state.bitmap_stack, bitmap.bitmap);
 }
 
 export function push_bitmap(bitmap: Sprite.SpriteSource)
 {
-	Base.stack_push(ui_state.bitmap_stack, bitmap);
+	Base.stack_push(ui_state.bitmap_stack, bitmap.bitmap);
 }
 
 export function pop_bitmap()
@@ -380,7 +380,7 @@ function ui_is_lmouse_down(): boolean
 	return (Input.is_down(Input.MBttn.M_LEFT));
 }
 
-export function ui_init(socket: WebSocket)
+export function init(socket: WebSocket)
 {
 	Socket.add_connection_hook(() => {
 		const packet = Packet.packet_request_sprite_info_make();
@@ -459,9 +459,11 @@ interface UiState
 	text_alignment_stack:	Base.Stack<UiTextAlignment>;
 	key_press_history: Map<Input.Key, {id: WidgetId, frame: number}>;
 	root:								UiWidget | null;
+	end_of_frame_hooks: Set<() => void>;
 }
 
 export const ui_state: UiState = {
+	end_of_frame_hooks: new Set(), 
 	root: null,
 	state: [],
 	focused: Base.u640,
@@ -499,13 +501,18 @@ export interface Rect {
 }
 
 
+export function on_frame_end(fn: () => void)
+{
+	ui_state.end_of_frame_hooks.add(fn);
+}
+
 export function ui_rect(x: number, y: number, w: number, h: number): Rect
 {
 	return {pos: [x, y], size: [w, h]}
 }
 
 type WidgetId = number; 
-interface UiWidget
+export interface UiWidget
 {
 	id:		WidgetId;
 	rect: Rect;
@@ -659,9 +666,15 @@ export function ui_frame_end()
 	pop_parent();
 	Input.consume_event();
 	ui_state.current_frame += 1;
+	for (const fn of ui_state.end_of_frame_hooks)
+	{
+		fn();
+	}
 }
 
-export function ui_frame_begin(dt: number, width: number = 800, height: number = 600)
+export function ui_frame_begin(dt: number,
+													     width: AxisSize = size_pct(1),
+															 height: AxisSize = size_pct(1))
 {
 	ui_state.root = null;
 	ui_state.delta_time = dt;
@@ -669,8 +682,8 @@ export function ui_frame_begin(dt: number, width: number = 800, height: number =
 	push_next_fixed_x(0);
 	push_next_fixed_y(0);
 	push_next_child_axis(AxisX);
-	push_next_fixed_width(width);
-	push_next_fixed_height(height);
+	push_next_size(AxisX, width);
+	push_next_size(AxisY, height);
 	push_next_background_color(Base.RGBA_FULL_TRANSPARENT);
 	const root = widget_make("--root", UiDrawBackground); 
 	push_parent(root);
@@ -726,8 +739,11 @@ function ui_calc_percent_size_rec(root: UiWidget, axis: Axis)
           break;
         }
       }
-      const size = fixed_parent!.fixed_size[axis] * root.size.v[axis].value;
-      root.fixed_size[axis] = size;
+			if (fixed_parent)
+			{
+				const size = fixed_parent.fixed_size[axis] * root.size.v[axis].value;
+				root.fixed_size[axis] = size;
+			}
     } break;
     default:
 			break;
@@ -870,8 +886,6 @@ function ui_calc_pos_clipping(root: UiWidget, axis: Axis)
       }
     }
 		child.rect.pos[axis]	= Base.Floor(root.rect.pos[axis] + child.fixed_position[axis] + Base.Floor(-root.view_offset[axis]));
-		//if (axis === AxisX) child.rect.pos[axis] += child.border_size;
-		//if (axis === AxisY) child.rect.pos[axis] -= child.border_size;
     child.rect.size[axis] = Base.Floor(child.fixed_size[axis]);
 
 		const new_position = child.rect.pos[axis];
@@ -926,25 +940,6 @@ function ui_calc_layout(root: UiWidget, axis: Axis)
 	ui_calc_size_clipping(root, axis);
 	ui_calc_pos_clipping(root, axis);
 }
-
-
-//function ui_rouded_corners(
-//	ctx: CanvasRenderingContext2D,
-//	x: number, y: number,
-//	w: number, h: number, radius: number)
-//{
-//	ctx.beginPath();
-//		ctx.moveTo(x + radius, y);
-//		ctx.lineTo(x + w - radius, y);
-//		ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
-//		ctx.lineTo(x + w, y + h - radius);
-//		ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
-//		ctx.lineTo(x + radius, y + h);
-//		ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
-//		ctx.lineTo(x, y + radius);
-//		ctx.quadraticCurveTo(x, y, x + radius, y);
-//	ctx.closePath();
-//}
 
 export type RoundedCornersRadius = {
 	TopLeft: number;
@@ -1075,9 +1070,8 @@ function ui_draw_image(
 
 export function ui_widget_draw(widget: UiWidget)
 {
-
-	const color = Base.RGBA_to_css_string(widget.background_color);
-	const border_color = Base.RGBA_to_css_string(widget.border_color);
+	let color = Base.RGBA_to_css_string(widget.background_color);
+	let border_color = Base.RGBA_to_css_string(widget.border_color);
 
 	let x = widget.rect.pos[0];
 	let y = widget.rect.pos[1];
@@ -1229,7 +1223,6 @@ export function widget_make(text: string = "", flags: number): UiWidget
 	}
 	if (ui_state.bitmap_stack.top !== null)
 	{
-		//widget!.flags |= UiDrawBitmap;
 		widget!.bitmap_data		= ui_state.bitmap_stack.top!.value;
 		widget!.bitmap_region = ui_state.bitmap_region_stack.top?.value || null;
 	}
@@ -1242,23 +1235,37 @@ export function widget_make(text: string = "", flags: number): UiWidget
 	widget!.last_rendered_frame		= ui_state.current_frame;
 	if (ui_state.palette_stack.top !== null)
 	{
-		const {
-			border_color,
-			background_color,
-			border_size,
-			rouded_corners,
-			font,
-			font_size,
-			text_color
-		} = ui_state.palette_stack.top.value!;
+		const p = ui_state.palette_stack.top.value!;
 
-		widget!.border_color = border_color;
-		widget!.background_color = background_color;
-		widget!.border_size = border_size;
-		widget!.rounded_corners_radii = rouded_corners;
-		widget!.font = font;
-		widget!.font_size = font_size;
-		widget!.text_color = text_color;
+
+		widget!.border_color = p.border_color;
+		widget!.background_color = p.background_color;
+		widget!.border_size = p.border_size;
+		widget!.rounded_corners_radii = p.rouded_corners;
+		widget!.font = p.font;
+		widget!.font_size = p.font_size;
+		widget!.text_color = p.text_color;
+		const it = widget_with_interaction(widget!);
+		if (it.hovering)
+		{
+			widget!.border_color = p.hot_border_color;
+			widget!.background_color = p.hot_background_color;
+			widget!.border_size = p.hot_border_size;
+			widget!.rounded_corners_radii = p.hot_rouded_corners;
+			widget!.font = p.hot_font;
+			widget!.font_size = p.hot_font_size;
+			widget!.text_color = p.hot_text_color;
+		}
+		if (it.dragging)
+		{
+			widget!.border_color = p.active_border_color;
+			widget!.background_color = p.active_background_color;
+			widget!.border_size = p.active_border_size;
+			widget!.rounded_corners_radii = p.active_rouded_corners;
+			widget!.font = p.active_font;
+			widget!.font_size = p.active_font_size;
+			widget!.text_color = p.active_text_color;
+		}
 	}
 	if (Base.has_flag(widget!.flags, UiDrawText))
 	{
@@ -1359,7 +1366,7 @@ export function widget_with_interaction(widget: UiWidget)
 		cursor_in_rect														&&
 		(ui_state.active === Base.u640 || ui_state.active === widget.id))
 	{
-		ui_state.hot = widget.id; 
+		ui_state.hot = widget.id;
 		interaction.hovering = true;
 	}
 
@@ -1484,56 +1491,6 @@ export function spacer(size: AxisSize)
 	return widget_with_interaction(wid);
 }
 
-export enum UiAttachPos {
-	TopLeft,
-	BottomLeft,
-	TopRight,
-	BottomRight,
-	Center
-}
-
-export function attach_begin(where: UiAttachPos)
-{
-	push_next_size(AxisX, size_pct(1));
-	push_next_size(AxisY, size_pct(1));
-
-	const parent = widget_make("", UiFloating); 
-	push_parent(parent);
-	switch (where)
-	{
-		case UiAttachPos.TopRight: {
-			column_begin();
-			row_begin();
-			spacer(size_pct(1));
-		} break;
-		case UiAttachPos.BottomLeft: {
-			column_begin();
-			spacer(size_pct(1));
-			row_begin();
-		} break;
-		case UiAttachPos.BottomRight: {
-			column_begin();
-			spacer(size_pct(1));
-			row_begin();
-			spacer(size_pct(1));
-		} break;
-		//case UiAttachPos.Center: {
-		//	column_begin();
-		//	spacer(size_pct(0.5));
-		//	row_begin();
-		//	spacer(size_pct(0.5));
-		//} break;
-		default: break;
-	}
-}
-
-export function attach_end()
-{
-	row_end();
-	column_end();
-	pop_parent();
-}
-
 const positions: Map<string, Base.Pair<number>> = new Map();
 export function dragabble_begin(text: string, start_x: number = 0, start_y: number = 0)
 {
@@ -1570,39 +1527,25 @@ export function dragabble_end()
 
 export function scroll(view: UiWidget)
 {
-	push_next_palette(Palette.default_palette);
+	push_next_palette(Palette.neon);
 	const container = widget_make(`${view.text}--scroll`,
 																UiDrawBorder|UiDrawBackground|UiScroll|UiClickable);
-	const interaction = widget_with_interaction(container);
+	widget_with_interaction(container);
 	push_parent(container);
 	pop_parent();
 }
 
 
-const content = Array(10).fill(0);
-
-
-export function scrollable_grid_cell(id: number, cw: number, ch: number)
+export function scrollable_grid_cell()
 {
-	push_next_size(AxisX, size_fixed(cw, 1));
-	push_next_size(AxisY, size_fixed(ch, 1));
-	push_next_background_color(Base.Hex("#FFFFFFa2"));
-	push_next_rounded_corners_radii(rouded_corners(4, 4, 4, 4));
-	const cell = widget_make(`inventory--content--left--${id}--cell`,
-														UiDrawBorder|UiDrawBackground|UiClickable|UiRectClip);
-	const interaction = widget_with_interaction(cell);
-	if (interaction.clicked)
-	{
-	}
 }
 
 export function scrollable_grid(width:	AxisSize = size_pct(1),
 																height: AxisSize = size_pct(1),
-																cw: number,
-																ch: number)
+																cell_width: number,
+																cell_height: number)
 {
 	const parent = ui_state.parent_stack.top!.value;
-
 	push_next_size(AxisX, width);
 	push_next_size(AxisY, height);
 	push_next_child_axis(AxisY);
@@ -1611,20 +1554,22 @@ export function scrollable_grid(width:	AxisSize = size_pct(1),
 	widget_with_interaction(wid);
 
 	const [w, h] = wid.rect.size;
-	const cols = w / cw;
-	const rows = h / ch;
+	const cols = w / cell_width;
+	const rows = h / cell_height;
 
 	push_parent(wid);
-		for (let row = 0; row < rows; row += 1)
-		{
-			row_begin();
-			for (let col = 0; col < cols; col += 1)
-			{
-				column_begin();
-				scrollable_grid_cell(col * rows + row, cw, ch);
-				column_end();
-			}
-			row_end();
-		}
 	pop_parent();
+}
+
+export function with_padding(padding: number, cb: () => any) 
+{
+	row_begin();
+	spacer(size_fixed(padding));
+		column_begin();
+		spacer(size_fixed(padding));
+			cb();
+		spacer(size_fixed(padding));
+		column_end();
+	spacer(size_fixed(padding));
+	row_end();
 }

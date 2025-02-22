@@ -307,10 +307,9 @@ export function deinit() {
     }
 }
 export function debug_dump() {
-    Ui.attach_begin(Ui.UiAttachPos.BottomLeft);
     Ui.push_next_width(Ui.size_fixed(300, 1));
     Ui.push_next_height(Ui.size_fixed(300, 1));
-    Ui.push_next_palette(Palette.default_palette);
+    Ui.push_next_palette(Palette.pastel);
     Ui.push_next_text_alignment(Ui.UiTextAlignment.Left);
     Ui.push_next_child_axis(Ui.AxisY);
     const wid = Ui.widget_make(`input-debug--dump`, Ui.UiDrawBackground | Ui.UiDrawBorder);
@@ -334,5 +333,4 @@ export function debug_dump() {
     Ui.column_end();
     Ui.pop_font_size();
     Ui.pop_parent();
-    Ui.attach_end();
 }

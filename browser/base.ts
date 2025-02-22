@@ -659,3 +659,17 @@ export function Ptr<T>(v: T | null = null): Ptr<T> {
 export function PtrIsNil<T>(v: Ptr<T>): boolean {
 	return v.value === null;
 }
+
+export function camera_zero()
+{
+	return {
+		width: 0,
+		height: 0,
+		x: 0,
+		y: 0,
+		z: 0,
+		world_position: V2.Zero(),
+		zoom: 1,
+		is_locked: true,
+	} as Camera;
+}

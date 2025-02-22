@@ -237,7 +237,7 @@ export type Packet = {
 	size:	number;
 	// u32 -- used to identify 
 	// the packet in the server 
-	kind: number;
+	kind: PacketKind;
 	agent: Agent;
 	payload: PacketAuthenticationClient |
 					 PacketRequestSpriteInfo |
